@@ -34,3 +34,23 @@ export function RequireAuth() {
   }
   return <Outlet />;
 }
+
+/** Wraps signed-in app pages (inside RequireAuth): onboarding comes first. */
+export function RequireOnboarded() {
+  const { state } = useAuth();
+  const location = useLocation();
+  if (state.user && !state.user.onboardedAt) {
+    return <Navigate to={resolveSignedInPath(state.user, location.pathname + location.search)} replace />;
+  }
+  return <Outlet />;
+}
+
+/** Wraps /onboarding (inside RequireAuth). Once it's finished or skipped, carry on to `next` or Home. */
+export function OnboardingRoute() {
+  const { state } = useAuth();
+  const [params] = useSearchParams();
+  if (state.user?.onboardedAt) {
+    return <Navigate to={resolveSignedInPath(state.user, params.get('next'))} replace />;
+  }
+  return <Outlet />;
+}

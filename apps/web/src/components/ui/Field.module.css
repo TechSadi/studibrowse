@@ -6,6 +6,11 @@
   color: var(--ink-2);
 }
 
+.lbl small {
+  font-weight: 500;
+  color: var(--faint);
+}
+
 .labelRow {
   display: flex;
   justify-content: space-between;

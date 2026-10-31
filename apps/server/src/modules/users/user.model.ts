@@ -5,6 +5,7 @@ import {
   DEFAULT_WEEKLY_GOAL_MINS,
   MAX_SUBJECTS,
   NAME_MAX,
+  STUDYING_MAX,
   type AvatarColor,
 } from '@studibrowse/shared';
 
@@ -18,6 +19,7 @@ const timerDefaultsSchema = new Schema(
     shortBreakMins: { type: Number, required: true, default: DEFAULT_TIMER.shortBreakMins },
     longBreakMins: { type: Number, required: true, default: DEFAULT_TIMER.longBreakMins },
     roundsBeforeLong: { type: Number, required: true, default: DEFAULT_TIMER.roundsBeforeLong },
+    totalRounds: { type: Number, required: true, default: DEFAULT_TIMER.totalRounds },
   },
   { _id: false },
 );
@@ -50,6 +52,7 @@ const userSchema = new Schema(
     passwordHash: { type: String, select: false },
     googleId: { type: String },
     avatarColor: { type: String, enum: AVATAR_COLORS, required: true, default: randomAvatarColor },
+    studying: { type: String, trim: true, maxlength: STUDYING_MAX, default: '' },
     subjects: {
       type: [String],
       default: [],
@@ -75,6 +78,8 @@ userSchema.index(
 );
 // Finds someone's followers (profiles, "someone you follow opened a room" notifications).
 userSchema.index({ following: 1 });
+// Onboarding suggests the most recently active people.
+userSchema.index({ lastStudiedAt: -1, updatedAt: -1 });
 
 export type UserDocument = HydratedDocument<InferSchemaType<typeof userSchema>>;
 

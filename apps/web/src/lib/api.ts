@@ -8,6 +8,8 @@ import type {
   MeResponse,
   ResetPasswordInput,
   SignupInput,
+  SuggestionsResponse,
+  UpdateMeInput,
   UsernameAvailabilityResponse,
 } from '@studibrowse/shared';
 
@@ -156,4 +158,11 @@ export const usersApi = {
       `/api/users/username-available?u=${encodeURIComponent(username)}`,
       signal ? { signal } : {},
     ),
+  updateMe: (input: UpdateMeInput) =>
+    request<MeResponse>('PATCH', '/api/users/me', { body: input, auth: true }),
+  suggestions: () => request<SuggestionsResponse>('GET', '/api/users/suggestions', { auth: true }),
+  follow: (userId: string) =>
+    request<MeResponse>('POST', `/api/users/${encodeURIComponent(userId)}/follow`, { auth: true }),
+  unfollow: (userId: string) =>
+    request<MeResponse>('DELETE', `/api/users/${encodeURIComponent(userId)}/follow`, { auth: true }),
 };

@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { usernameAvailabilityQuerySchema } from '@studibrowse/shared';
-import { validateQuery } from '../../middleware/validate';
+import { updateMeSchema, userIdParamsSchema, usernameAvailabilityQuerySchema } from '@studibrowse/shared';
+import { requireAuth } from '../../middleware/requireAuth';
+import { validateBody, validateParams, validateQuery } from '../../middleware/validate';
 import * as controller from './users.controller';
 
 export function createUsersRouter(): Router {
@@ -11,5 +12,9 @@ export function createUsersRouter(): Router {
     validateQuery(usernameAvailabilityQuerySchema),
     controller.usernameAvailable,
   );
+  router.patch('/me', requireAuth, validateBody(updateMeSchema), controller.updateMe);
+  router.get('/suggestions', requireAuth, controller.suggestions);
+  router.post('/:id/follow', requireAuth, validateParams(userIdParamsSchema), controller.follow);
+  router.delete('/:id/follow', requireAuth, validateParams(userIdParamsSchema), controller.unfollow);
   return router;
 }

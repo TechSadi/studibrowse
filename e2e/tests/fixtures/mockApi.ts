@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import type { ApiErrorBody, AuthResponse, PublicUser } from '@studibrowse/shared';
+import type { ApiErrorBody, AuthResponse, PublicUser, SuggestedUser } from '@studibrowse/shared';
 
 /**
  * An in-memory stand-in for the auth API, so the e2e tests run against the Vite dev server alone.
@@ -19,9 +19,16 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     username: 'alexsmith',
     email: 'alex@example.com',
     avatarColor: 'green',
+    studying: '',
     subjects: [],
     weeklyGoalMins: 600,
-    timerDefaults: { focusMins: 25, shortBreakMins: 5, longBreakMins: 15, roundsBeforeLong: 4 },
+    timerDefaults: {
+      focusMins: 25,
+      shortBreakMins: 5,
+      longBreakMins: 15,
+      roundsBeforeLong: 4,
+      totalRounds: 4,
+    },
     streak: { current: 0, longest: 0 },
     lastStudiedAt: null,
     following: [],
@@ -51,6 +58,17 @@ export class MockApi {
     this.sessionUserId = user.id;
     const body: AuthResponse = { accessToken: `token-${user.id}`, user };
     return { status, json: body };
+  }
+
+  private currentAccount(): MockAccount | undefined {
+    return this.accounts.find((a) => a.user.id === this.sessionUserId);
+  }
+
+  private updateCurrentUser(update: (user: PublicUser) => PublicUser) {
+    const account = this.currentAccount();
+    if (!account) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+    account.user = update(account.user);
+    return { status: 200, json: { user: account.user } };
   }
 
   private record(name: string, body: unknown) {
@@ -118,8 +136,47 @@ export class MockApi {
         const u = url.searchParams.get('u') ?? '';
         return { status: 200, json: { available: !this.accounts.some((a) => a.user.username === u) } };
       }
-      default:
+      case 'PATCH /api/users/me': {
+        this.record('updateMe', body);
+        const { timerDefaults, onboarded, ...fields } = body as Partial<PublicUser> & { onboarded?: true };
+        return this.updateCurrentUser((user) => ({
+          ...user,
+          ...fields,
+          timerDefaults: { ...user.timerDefaults, ...timerDefaults },
+          onboardedAt: user.onboardedAt ?? (onboarded ? new Date().toISOString() : null),
+        }));
+      }
+      case 'GET /api/users/suggestions': {
+        const users: SuggestedUser[] = this.accounts
+          .filter((a) => a.user.id !== this.sessionUserId && a.user.onboardedAt)
+          .map(({ user }) => ({
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            avatarColor: user.avatarColor,
+            studying: user.studying,
+            subjects: user.subjects,
+          }));
+        return { status: 200, json: { users } };
+      }
+      default: {
+        const followId = url.pathname.match(/^\/api\/users\/([^/]+)\/follow$/)?.[1];
+        if (followId && method === 'POST') {
+          this.record('follow', followId);
+          return this.updateCurrentUser((user) => ({
+            ...user,
+            following: [...new Set([...user.following, followId])],
+          }));
+        }
+        if (followId && method === 'DELETE') {
+          this.record('unfollow', followId);
+          return this.updateCurrentUser((user) => ({
+            ...user,
+            following: user.following.filter((id) => id !== followId),
+          }));
+        }
         return error(404, 'NOT_FOUND', 'Not found.');
+      }
     }
   }
 }

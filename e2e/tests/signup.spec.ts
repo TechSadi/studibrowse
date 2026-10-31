@@ -64,7 +64,7 @@ test.describe('Sign up', () => {
     await page.getByRole('button', { name: 'Create account' }).click();
 
     await expect(page).toHaveURL('/onboarding');
-    await expect(page.getByText('@alexsmith')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Set up your profile' })).toBeVisible();
     expect(api.calls.signup?.[0]).toMatchObject({
       username: 'alexsmith',
       acceptTerms: true,

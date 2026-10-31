@@ -23,6 +23,8 @@ export interface PublicUser {
   username: string;
   email: string;
   avatarColor: AvatarColor;
+  /** "What are you studying?", e.g. "Pharmacy, year 3". Empty when not set. */
+  studying: string;
   subjects: string[];
   weeklyGoalMins: number;
   timerDefaults: TimerDefaults;
@@ -42,6 +44,7 @@ export interface TimerDefaults {
   shortBreakMins: number;
   longBreakMins: number;
   roundsBeforeLong: number;
+  totalRounds: number;
 }
 
 /** The notification toggles in Settings. */
@@ -69,4 +72,18 @@ export interface MeResponse {
 
 export interface UsernameAvailabilityResponse {
   available: boolean;
+}
+
+/** Someone onboarding suggests following. Only what the suggestion row shows. */
+export interface SuggestedUser {
+  id: string;
+  name: string;
+  username: string;
+  avatarColor: AvatarColor;
+  studying: string;
+  subjects: string[];
+}
+
+export interface SuggestionsResponse {
+  users: SuggestedUser[];
 }

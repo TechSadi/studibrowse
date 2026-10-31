@@ -32,3 +32,13 @@ export function validateQuery(schema: z.ZodType): RequestHandler {
     next();
   };
 }
+
+/** Replaces req.params with the parsed value. */
+export function validateParams(schema: z.ZodType): RequestHandler {
+  return (req, _res, next) => {
+    const result = schema.safeParse(req.params);
+    if (!result.success) throw validationError(result.error);
+    req.params = result.data as typeof req.params;
+    next();
+  };
+}

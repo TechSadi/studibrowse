@@ -46,6 +46,13 @@
   font-size: 11px;
 }
 
+/* Profile header in onboarding and Settings (.set-avatar .av). */
+.lg {
+  width: 64px;
+  height: 64px;
+  font-size: 20px;
+}
+
 .stack {
   display: flex;
 }

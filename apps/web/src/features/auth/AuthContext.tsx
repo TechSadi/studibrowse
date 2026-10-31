@@ -12,6 +12,8 @@ type AuthState =
 interface AuthContextValue {
   state: AuthState;
   signIn: (session: AuthResponse) => void;
+  /** Replaces the signed-in user with a fresh copy from the API (after a profile update or a follow). */
+  setUser: (user: PublicUser) => void;
   logout: () => Promise<void>;
 }
 
@@ -43,6 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: 'signedIn', user: session.user });
   }, []);
 
+  const setUser = useCallback((user: PublicUser) => {
+    setState((current) => (current.status === 'signedIn' ? { status: 'signedIn', user } : current));
+  }, []);
+
   const logout = useCallback(async () => {
     // Logging out locally must work even if the request fails (offline); the server answers 204 regardless.
     await authApi.logout().catch(() => undefined);
@@ -51,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ ...SIGNED_OUT, loggedOut: true });
   }, [queryClient]);
 
-  const value = useMemo(() => ({ state, signIn, logout }), [state, signIn, logout]);
+  const value = useMemo(() => ({ state, signIn, setUser, logout }), [state, signIn, setUser, logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

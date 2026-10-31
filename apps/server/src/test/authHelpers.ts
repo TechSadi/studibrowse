@@ -1,6 +1,8 @@
 import type { Response } from 'supertest';
 import type { EmailMessage, EmailService } from '../lib/email';
 import { REFRESH_COOKIE } from '../modules/auth/auth.cookies';
+import { signAccessToken } from '../modules/auth/tokens';
+import { User, type UserDocument } from '../modules/users/user.model';
 
 export function setCookieHeaders(res: Response): string[] {
   const header = res.headers['set-cookie'] as string[] | string | undefined;
@@ -29,4 +31,20 @@ export function createRecordingEmailService(): EmailService & { sent: EmailMessa
       sent.push(message);
     },
   };
+}
+
+let userCount = 0;
+
+/** Saves a user and signs an access token for them, for tests of authenticated endpoints. */
+export async function createUserWithToken(
+  overrides: Record<string, unknown> = {},
+): Promise<{ user: UserDocument; token: string }> {
+  userCount += 1;
+  const user = await User.create({
+    name: `Test User ${userCount}`,
+    username: `testuser${userCount}`,
+    email: `test${userCount}@example.com`,
+    ...overrides,
+  });
+  return { user, token: signAccessToken(user.id) };
 }

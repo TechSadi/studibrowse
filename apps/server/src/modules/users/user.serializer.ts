@@ -1,4 +1,4 @@
-import type { AvatarColor, PublicUser } from '@studibrowse/shared';
+import type { AvatarColor, PublicUser, SuggestedUser } from '@studibrowse/shared';
 import type { UserDocument } from './user.model';
 
 /**
@@ -12,6 +12,7 @@ export function toPublicUser(user: UserDocument): PublicUser {
     username: user.username,
     email: user.email,
     avatarColor: user.avatarColor as AvatarColor,
+    studying: user.studying,
     subjects: [...user.subjects],
     weeklyGoalMins: user.weeklyGoalMins,
     timerDefaults: {
@@ -19,6 +20,7 @@ export function toPublicUser(user: UserDocument): PublicUser {
       shortBreakMins: user.timerDefaults.shortBreakMins,
       longBreakMins: user.timerDefaults.longBreakMins,
       roundsBeforeLong: user.timerDefaults.roundsBeforeLong,
+      totalRounds: user.timerDefaults.totalRounds,
     },
     streak: { current: user.streak.current, longest: user.streak.longest },
     lastStudiedAt: user.lastStudiedAt?.toISOString() ?? null,
@@ -31,5 +33,17 @@ export function toPublicUser(user: UserDocument): PublicUser {
     },
     onboardedAt: user.onboardedAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
+  };
+}
+
+/** Another person as onboarding suggests them: no email, settings or following list. */
+export function toSuggestedUser(user: UserDocument): SuggestedUser {
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    avatarColor: user.avatarColor as AvatarColor,
+    studying: user.studying,
+    subjects: [...user.subjects],
   };
 }

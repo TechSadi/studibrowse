@@ -6,11 +6,11 @@ export type AvatarTone = 1 | 2 | 3 | 4 | 5 | 6;
 interface AvatarProps {
   initials: string;
   tone?: AvatarTone;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
 }
 
 export function Avatar({ initials, tone = 1, size = 'md' }: AvatarProps) {
-  const className = [styles.av, styles[`c${tone}`], size === 'sm' && styles.sm].filter(Boolean).join(' ');
+  const className = [styles.av, styles[`c${tone}`], size !== 'md' && styles[size]].filter(Boolean).join(' ');
   return <span className={className}>{initials}</span>;
 }
 

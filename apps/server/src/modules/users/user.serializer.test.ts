@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { User } from './user.model';
-import { toPublicUser } from './user.serializer';
+import { toPublicUser, toSuggestedUser } from './user.serializer';
 
 describe('toPublicUser', () => {
   const followed = new Types.ObjectId();
@@ -39,6 +39,7 @@ describe('toPublicUser', () => {
         'notificationPrefs',
         'onboardedAt',
         'streak',
+        'studying',
         'subjects',
         'timerDefaults',
         'username',
@@ -51,6 +52,28 @@ describe('toPublicUser', () => {
       lastStudiedAt: '2026-10-01T10:00:00.000Z',
       onboardedAt: null,
       createdAt: '2026-09-01T10:00:00.000Z',
+    });
+  });
+});
+
+describe('toSuggestedUser', () => {
+  it('returns only what a suggestion row shows', () => {
+    const user = new User({
+      name: 'Maya Kapoor',
+      username: 'mayak',
+      email: 'maya@example.com',
+      passwordHash: '$2b$12$secret',
+      avatarColor: 'gold',
+      studying: 'Pharmacy, year 3',
+      subjects: ['Exam prep'],
+    });
+    expect(toSuggestedUser(user)).toEqual({
+      id: user.id,
+      name: 'Maya Kapoor',
+      username: 'mayak',
+      avatarColor: 'gold',
+      studying: 'Pharmacy, year 3',
+      subjects: ['Exam prep'],
     });
   });
 });

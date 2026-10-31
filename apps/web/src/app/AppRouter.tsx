@@ -1,6 +1,6 @@
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
-import { PublicOnlyRoute, RequireAuth } from '../features/auth/guards';
+import { OnboardingRoute, PublicOnlyRoute, RequireAuth, RequireOnboarded } from '../features/auth/guards';
 import { LoginPage } from '../features/auth/LoginPage';
 import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { SignupPage } from '../features/auth/SignupPage';
@@ -25,8 +25,9 @@ const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
-      { path: '/onboarding', element: <OnboardingPage /> },
-      { path: '/home', element: <HomePage /> },
+      { element: <OnboardingRoute />, children: [{ path: '/onboarding', element: <OnboardingPage /> }] },
+      // Accounts that haven't finished onboarding are sent there first.
+      { element: <RequireOnboarded />, children: [{ path: '/home', element: <HomePage /> }] },
     ],
   },
   { path: '*', element: <NotFoundPage /> },
