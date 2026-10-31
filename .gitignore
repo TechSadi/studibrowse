@@ -1,1 +1,21 @@
-CLAUDE.md
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Env files (keep the example)
+.env
+.env.*
+!.env.example
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+  - e2e
+
+# pnpm only runs install scripts that are listed here.
+allowBuilds:
+  # esbuild (used by Vite, tsx and tsup) fetches its native binary.
+  esbuild: true
+  # Downloads the mongod binary used by server tests, so the first test run doesn't stall.
+  mongodb-memory-server: true
+  # Ships prebuilt binaries as optional dependencies; its fallback build script isn't needed.
+  unrs-resolver: false

@@ -1,0 +1,9 @@
+# Generated
+pnpm-lock.yaml
+**/dist/
+**/coverage/
+playwright-report/
+test-results/
+
+# Spec, design and docs are authored by hand; don't reformat them.
+docs/
