@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/** A blank line in .env (`KEY=`) counts as unset. */
+const optionalString = z
+  .string()
+  .optional()
+  .transform((value) => value?.trim() || undefined);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
@@ -18,6 +24,19 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
   // 12 in every real environment; the test config lowers it so the suite stays fast.
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
+  // Optional outside production, so local dev runs without a Google client or a Resend account.
+  GOOGLE_CLIENT_ID: optionalString,
+  RESEND_API_KEY: optionalString,
+  EMAIL_FROM: optionalString,
+});
+
+const REQUIRED_IN_PRODUCTION = ['GOOGLE_CLIENT_ID', 'RESEND_API_KEY', 'EMAIL_FROM'] as const;
+
+const envSchemaChecked = envSchema.superRefine((env, ctx) => {
+  if (env.NODE_ENV !== 'production') return;
+  for (const key of REQUIRED_IN_PRODUCTION) {
+    if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'is required in production' });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -25,7 +44,7 @@ export type Env = z.infer<typeof envSchema>;
 export type ParseEnvResult = { ok: true; env: Env } | { ok: false; problems: string[] };
 
 export function parseEnv(source: Record<string, string | undefined>): ParseEnvResult {
-  const result = envSchema.safeParse(source);
+  const result = envSchemaChecked.safeParse(source);
   if (result.success) return { ok: true, env: result.data };
   const problems = result.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`);
   return { ok: false, problems };

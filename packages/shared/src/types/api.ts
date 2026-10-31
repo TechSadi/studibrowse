@@ -58,6 +58,11 @@ export interface AuthResponse {
   user: PublicUser;
 }
 
+/** Same body whether or not an account uses the email. */
+export interface ForgotPasswordResponse {
+  ok: true;
+}
+
 export interface MeResponse {
   user: PublicUser;
 }

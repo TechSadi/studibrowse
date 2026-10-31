@@ -2,9 +2,12 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
+import { env } from './config/env';
+import { createEmailService, type EmailService } from './lib/email';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { createAuthRouter } from './modules/auth/auth.routes';
+import { createGoogleVerifier, type GoogleVerifier } from './modules/auth/google';
 import { createHealthRouter } from './modules/health/health.routes';
 import { createUsersRouter } from './modules/users/users.routes';
 
@@ -14,10 +17,19 @@ export const JSON_BODY_LIMIT = '100kb';
 export interface AppDependencies {
   isDatabaseConnected: () => boolean;
   clientOrigin: string;
+  /** Defaults to Resend in production and the server log otherwise. Tests pass a fake. */
+  emailService?: EmailService;
+  /** Defaults to google-auth-library with GOOGLE_CLIENT_ID. Tests pass a fake. */
+  verifyGoogleToken?: GoogleVerifier;
 }
 
 /** Builds the Express app without listening, so tests can import it. */
-export function createApp({ isDatabaseConnected, clientOrigin }: AppDependencies): Express {
+export function createApp({
+  isDatabaseConnected,
+  clientOrigin,
+  emailService = createEmailService(env),
+  verifyGoogleToken = createGoogleVerifier(env.GOOGLE_CLIENT_ID),
+}: AppDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
   app.use(requestLogger);
@@ -28,8 +40,8 @@ export function createApp({ isDatabaseConnected, clientOrigin }: AppDependencies
   app.use(cookieParser());
 
   app.use('/api/health', createHealthRouter(isDatabaseConnected));
-  // Signup and login are rate limited inside the router.
-  app.use('/api/auth', createAuthRouter());
+  // The password, email and Google endpoints are rate limited inside the router.
+  app.use('/api/auth', createAuthRouter({ emailService, verifyGoogleToken }));
   app.use('/api/users', createUsersRouter());
 
   app.use(notFoundHandler);

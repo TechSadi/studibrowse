@@ -38,9 +38,29 @@ export const loginSchema = z.object({
   keepLoggedIn: z.boolean().default(false),
 });
 
+export const forgotPasswordSchema = z.object({ email: emailSchema });
+
+export const resetPasswordSchema = z.object({
+  /** The raw token from the reset link. */
+  token: z.string().min(1, 'This reset link is invalid or has expired.').max(128),
+  password: passwordSchema,
+});
+
+export const googleAuthSchema = z.object({
+  /** The ID token (JWT) that Google Identity Services hands the client. */
+  credential: z.string().min(1, 'Google sign-in failed. Please try again.').max(4096),
+  keepLoggedIn: z.boolean().default(true),
+});
+
 export const usernameAvailabilityQuerySchema = z.object({ u: usernameSchema });
 
 export type SignupInput = z.input<typeof signupSchema>;
 export type SignupData = z.output<typeof signupSchema>;
 export type LoginInput = z.input<typeof loginSchema>;
 export type LoginData = z.output<typeof loginSchema>;
+export type ForgotPasswordInput = z.input<typeof forgotPasswordSchema>;
+export type ForgotPasswordData = z.output<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.input<typeof resetPasswordSchema>;
+export type ResetPasswordData = z.output<typeof resetPasswordSchema>;
+export type GoogleAuthInput = z.input<typeof googleAuthSchema>;
+export type GoogleAuthData = z.output<typeof googleAuthSchema>;

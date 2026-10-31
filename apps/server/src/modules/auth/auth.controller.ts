@@ -1,7 +1,19 @@
 import type { Request, RequestHandler, Response } from 'express';
-import type { AuthResponse, LoginData, MeResponse, SignupData } from '@studibrowse/shared';
+import type {
+  AuthResponse,
+  ForgotPasswordData,
+  ForgotPasswordResponse,
+  GoogleAuthData,
+  LoginData,
+  MeResponse,
+  ResetPasswordData,
+  SignupData,
+} from '@studibrowse/shared';
+import type { EmailService } from '../../lib/email';
 import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from './auth.cookies';
 import * as authService from './auth.service';
+import type { GoogleVerifier } from './google';
+import * as passwordResetService from './passwordReset.service';
 
 type Params = Record<string, string>;
 
@@ -43,3 +55,28 @@ export const me: RequestHandler<Params, MeResponse> = async (req, res) => {
   // requireAuth runs first, so userId is set.
   res.json({ user: await authService.getMe(req.userId!) });
 };
+
+/** Always 200, whether or not an account uses the email. */
+export function createForgotPasswordHandler(
+  emailService: EmailService,
+): RequestHandler<Params, ForgotPasswordResponse, ForgotPasswordData> {
+  return async (req, res) => {
+    await passwordResetService.requestPasswordReset(req.body.email, emailService);
+    res.json({ ok: true });
+  };
+}
+
+export const resetPassword: RequestHandler<Params, unknown, ResetPasswordData> = async (req, res) => {
+  await passwordResetService.resetPassword(req.body);
+  res.status(204).end();
+};
+
+/** 201 when the Google account is new to us, so the client knows it just signed up. */
+export function createGoogleHandler(
+  verifyGoogleToken: GoogleVerifier,
+): RequestHandler<Params, AuthResponse, GoogleAuthData> {
+  return async (req, res) => {
+    const session = await authService.signInWithGoogle(req.body, verifyGoogleToken);
+    sendSession(res, session, session.created ? 201 : 200);
+  };
+}

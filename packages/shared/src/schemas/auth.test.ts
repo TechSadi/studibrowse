@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { emailSchema, loginSchema, passwordSchema, signupSchema, usernameSchema } from './auth';
+import {
+  emailSchema,
+  forgotPasswordSchema,
+  googleAuthSchema,
+  loginSchema,
+  passwordSchema,
+  resetPasswordSchema,
+  signupSchema,
+  usernameSchema,
+} from './auth';
 
 const validSignup = {
   name: 'Alex Smith',
@@ -66,5 +75,45 @@ describe('loginSchema', () => {
 
   it('requires a password', () => {
     expect(loginSchema.safeParse({ identifier: 'alex', password: '' }).success).toBe(false);
+  });
+});
+
+describe('forgotPasswordSchema', () => {
+  it('normalises the email', () => {
+    expect(forgotPasswordSchema.parse({ email: ' Alex@Example.COM ' })).toEqual({
+      email: 'alex@example.com',
+    });
+  });
+
+  it('rejects an invalid email', () => {
+    expect(forgotPasswordSchema.safeParse({ email: 'alex' }).success).toBe(false);
+  });
+});
+
+describe('resetPasswordSchema', () => {
+  it('accepts a token and a strong password', () => {
+    expect(resetPasswordSchema.safeParse({ token: 'abc', password: 'password1' }).success).toBe(true);
+  });
+
+  it.each([
+    ['an empty token', { token: '', password: 'password1' }],
+    ['an overlong token', { token: 'x'.repeat(129), password: 'password1' }],
+    ['a weak password', { token: 'abc', password: 'onlyletters' }],
+  ])('rejects %s', (_label, value) => {
+    expect(resetPasswordSchema.safeParse(value).success).toBe(false);
+  });
+});
+
+describe('googleAuthSchema', () => {
+  it('defaults keepLoggedIn to true', () => {
+    expect(googleAuthSchema.parse({ credential: 'id-token' })).toEqual({
+      credential: 'id-token',
+      keepLoggedIn: true,
+    });
+  });
+
+  it('requires a credential', () => {
+    expect(googleAuthSchema.safeParse({ credential: '' }).success).toBe(false);
+    expect(googleAuthSchema.safeParse({}).success).toBe(false);
   });
 });

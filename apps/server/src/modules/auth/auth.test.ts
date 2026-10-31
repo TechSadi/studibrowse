@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SignupInput } from '@studibrowse/shared';
 import { createApp } from '../../app';
 import { env } from '../../config/env';
+import { refreshCookie, refreshSetCookie, setCookieHeaders } from '../../test/authHelpers';
 import { useTestDatabase } from '../../test/testDb';
 import { User } from '../users/user.model';
 import { REFRESH_COOKIE } from './auth.cookies';
@@ -35,24 +36,6 @@ function signUp(overrides: Partial<SignupInput> = {}) {
 
 function logIn(identifier: string, password: string, keepLoggedIn?: boolean) {
   return request(app).post('/api/auth/login').send({ identifier, password, keepLoggedIn });
-}
-
-function setCookieHeaders(res: Response): string[] {
-  const header = res.headers['set-cookie'] as string[] | string | undefined;
-  if (!header) return [];
-  return Array.isArray(header) ? header : [header];
-}
-
-/** The full Set-Cookie line for the refresh cookie. */
-function refreshSetCookie(res: Response): string {
-  const line = setCookieHeaders(res).find((c) => c.startsWith(`${REFRESH_COOKIE}=`));
-  if (!line) throw new Error('No refresh cookie was set');
-  return line;
-}
-
-/** `sb_refresh=<token>`, ready to send back in a Cookie header. Supertest won't resend Secure cookies over http. */
-function refreshCookie(res: Response): string {
-  return refreshSetCookie(res).split(';')[0]!;
 }
 
 function refreshWith(cookie?: string) {
@@ -215,6 +198,23 @@ describe('POST /api/auth/login', () => {
     const res = await logIn('g@example.com', 'anything-1');
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('limits failed attempts per account: the 11th in 15 minutes gets 429 RATE_LIMITED', async () => {
+    for (let i = 0; i < 10; i++) {
+      expect((await logIn('alexsmith', 'wrong-password-1')).status).toBe(401);
+    }
+    const blocked = await logIn('AlexSmith', validSignup.password);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error.code).toBe('RATE_LIMITED');
+  });
+
+  it('counts each account separately and ignores successful logins', async () => {
+    for (let i = 0; i < 10; i++) await logIn('someone-else', 'wrong-password-1');
+    for (let i = 0; i < 5; i++) {
+      expect((await logIn('alexsmith', validSignup.password)).status).toBe(200);
+    }
+    expect((await logIn('someone-else', 'wrong-password-1')).status).toBe(429);
   });
 
   it('rejects an empty body with 400', async () => {

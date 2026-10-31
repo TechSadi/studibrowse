@@ -18,3 +18,21 @@ export const emailTaken = () =>
 
 export const usernameTaken = (username: string) =>
   new AppError(409, 'USERNAME_TAKEN', `@${username} is taken.`);
+
+// One answer for unknown, used and expired links: the client only needs to offer a new one.
+export const resetTokenInvalid = () =>
+  new AppError(400, 'RESET_TOKEN_INVALID', 'This reset link is invalid or has expired. Request a new one.');
+
+export const googleTokenInvalid = () =>
+  new AppError(401, 'GOOGLE_TOKEN_INVALID', 'Google sign-in failed. Please try again.');
+
+/** The email belongs to an account already linked to a different Google account. */
+export const googleAccountConflict = () =>
+  new AppError(
+    409,
+    'GOOGLE_ACCOUNT_CONFLICT',
+    'This email is linked to a different Google account. Sign in with that one or use your password.',
+  );
+
+export const googleNotConfigured = () =>
+  new AppError(503, 'GOOGLE_NOT_CONFIGURED', 'Google sign-in is not available right now.');

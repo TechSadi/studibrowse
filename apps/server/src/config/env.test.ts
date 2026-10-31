@@ -11,6 +11,9 @@ const valid = {
   ACCESS_TOKEN_TTL_SECONDS: '600',
   REFRESH_TOKEN_TTL_DAYS: '14',
   BCRYPT_COST: '13',
+  GOOGLE_CLIENT_ID: 'client-id.apps.googleusercontent.com',
+  RESEND_API_KEY: 're_test_key',
+  EMAIL_FROM: 'StudiBrowse <hello@studibrowse.app>',
 };
 
 describe('parseEnv', () => {
@@ -62,6 +65,24 @@ describe('parseEnv', () => {
     expect(result.problems[0]).toMatch(/^MONGODB_URI /);
     expect(result.problems[1]).toMatch(/^CLIENT_ORIGIN /);
     expect(result.problems[2]).toMatch(/^JWT_ACCESS_SECRET /);
+  });
+
+  it.each(['GOOGLE_CLIENT_ID', 'RESEND_API_KEY', 'EMAIL_FROM'])('requires %s in production', (key) => {
+    const result = parseEnv({ ...valid, [key]: undefined });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problems).toEqual([`${key} is required in production`]);
+  });
+
+  it('leaves the Google and email settings optional outside production', () => {
+    const result = parseEnv({
+      NODE_ENV: 'development',
+      MONGODB_URI: valid.MONGODB_URI,
+      CLIENT_ORIGIN: valid.CLIENT_ORIGIN,
+      JWT_ACCESS_SECRET: valid.JWT_ACCESS_SECRET,
+      GOOGLE_CLIENT_ID: '',
+    });
+    expect(result.ok && result.env.GOOGLE_CLIENT_ID).toBeUndefined();
   });
 
   it('rejects a MongoDB URI with the wrong scheme', () => {

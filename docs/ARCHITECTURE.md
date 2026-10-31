@@ -24,7 +24,7 @@ For things requested once: auth, profiles, room lists, history.
 web (TanStack Query → fetch /api/...)
   → Vite proxy (dev) / same origin (prod)
   → Express: request logger → helmet → CORS → JSON body (100 kB) → cookies
-             (signup and login are also rate limited)
+             (the password, email and Google auth endpoints are also rate limited)
   → router (modules/<feature>/*.routes.ts)  validates input with the shared zod schema
   → controller                              reads req, calls the service, writes res
   → service                                 business logic + Mongoose; never sees req/res
@@ -66,9 +66,33 @@ Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails 
 | `POST /api/auth/refresh` | Rotates the cookie, returns `{ accessToken, user }` | 401 `UNAUTHENTICATED`, 401 `REFRESH_TOKEN_REUSED`; the cookie is cleared on any failure |
 | `POST /api/auth/logout` | Deletes the session's tokens and clears the cookie (204, also without a cookie) | none |
 | `GET /api/auth/me` | `{ user }` for the access token | 401 `UNAUTHENTICATED`, 401 `TOKEN_EXPIRED` |
+| `POST /api/auth/forgot` | Emails a reset link if an account uses the email (shared `forgotPasswordSchema`). Always 200 `{ ok: true }` | 400 `VALIDATION_ERROR`, 429 `RATE_LIMITED` |
+| `POST /api/auth/reset` | Sets a new password from a reset link and signs the account out everywhere (204) (shared `resetPasswordSchema`) | 400 `RESET_TOKEN_INVALID` (unknown, used or expired) |
+| `POST /api/auth/google` | Verifies a Google ID token, then signs in, links or creates the account. Sets the cookie, returns `{ accessToken, user }`: 201 for a new account, 200 otherwise (shared `googleAuthSchema`) | 401 `GOOGLE_TOKEN_INVALID`, 409 `GOOGLE_ACCOUNT_CONFLICT`, 503 `GOOGLE_NOT_CONFIGURED` |
 | `GET /api/users/username-available?u=` | `{ available }`, for the live check on Sign up | 400 `VALIDATION_ERROR` |
 
-Only signup and login are rate limited; refresh and `/me` run on every page load.
+Rate limits (`middleware/rateLimit.ts`, in memory):
+
+- **Per IP:** 20 requests per 15 minutes, shared by signup, login, forgot, reset and google. Refresh and `/me` aren't limited because they run on every page load.
+- **Per account:** login allows 10 *failed* attempts per identifier per 15 minutes, and forgot allows 3 requests per email per hour. These limiters key on the normalised body, so they run after validation. Any string counts the same whether or not an account uses it, so a 429 reveals nothing. The trade-off: someone can block password login for an account for 15 minutes. Google sign-in and password reset still work for its owner.
+
+### Password reset
+
+1. `POST /forgot` looks the email up. If no account uses it, nothing happens. Otherwise it deletes the user's older reset tokens (only the newest link works), stores the SHA-256 hash of a new 32-byte token in `passwordresettokens` (`userId`, `tokenHash`, `expiresAt` = 30 minutes (`RESET_TOKEN_TTL_MINS`) with a TTL index, `usedAt`), and emails `${CLIENT_ORIGIN}/reset-password#token=<token>`. The token is in the fragment so it never reaches a server log or a Referer header. The email is sent without awaiting it, so timing and provider errors don't reveal whether the account exists. Google-only accounts get a link too.
+2. `POST /reset` marks the token used with one atomic update (so it works once, even under a race), sets the bcrypt hash and deletes all of the user's refresh tokens and reset tokens.
+3. Access tokens already issued stay valid until they expire (15 minutes at most). This is a known v1 limitation.
+
+Email goes through the `EmailService` interface (`lib/email/`). In production it uses Resend (one `fetch` to its API, with `RESEND_API_KEY` and `EMAIL_FROM`). Everywhere else the email is printed to the server log, so the reset link can be copied from there. Tests inject a recording fake through `createApp({ emailService })`.
+
+### Google sign-in
+
+The web app gets an ID token from Google Identity Services and posts it to `POST /google`. The server verifies it with google-auth-library (signature, issuer, expiry, audience = `GOOGLE_CLIENT_ID`) and requires `email_verified`. Then:
+
+1. A user with this `googleId` → sign in.
+2. Otherwise, a user with this email → link Google to it. We never verify emails at sign-up, so a password on that account may belong to someone who registered the address first. Linking therefore **removes the password and deletes every refresh and reset token** for the account. The owner can set a password again with Forgot password. If that account is already linked to a different Google id → 409 `GOOGLE_ACCOUNT_CONFLICT`.
+3. Otherwise, create the account with the Google name and a suggested username (`modules/users/suggestUsername.ts`: the email's local part, reduced to `[a-z0-9_]`, plus random digits if it's taken). `onboardedAt` is null, so the client sends the user to onboarding, and they can change the username later.
+
+A duplicate-key race (two tabs signing up at once, or someone taking the suggested username) reruns the lookup once. Without `GOOGLE_CLIENT_ID` (allowed outside production) the endpoint answers 503. Tests inject a fake verifier through `createApp({ verifyGoogleToken })`.
 
 Flow:
 

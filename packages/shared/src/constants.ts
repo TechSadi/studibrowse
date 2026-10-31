@@ -29,3 +29,6 @@ export const DEFAULT_TIMER = {
   longBreakMins: 15,
   roundsBeforeLong: 4,
 } as const;
+
+/** How long a password reset link works. The Forgot password screen quotes it. */
+export const RESET_TOKEN_TTL_MINS = 30;
