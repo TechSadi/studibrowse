@@ -60,5 +60,5 @@ studibrowse/
 │       ├── lib/                  # api client, socket client, theme, time
 │       ├── hooks/
 │       └── assets/logo/          # the current book logo
-└── e2e/                          # Playwright end-to-end tests
+└── e2e/                          # Playwright end-to-end tests (own workspace package)
 ```

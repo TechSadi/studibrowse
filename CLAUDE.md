@@ -20,8 +20,9 @@ A real-time web app where anyone online opens or joins a study room and focuses 
 
 - First run: `pnpm install`, then `cp .env.example .env` (the server reads `.env` from the repo root and exits at boot if a variable is missing).
 - `pnpm dev` runs web (5173) and server (4000) together. `docker compose up -d` starts local MongoDB. Vite proxies `/api` and `/socket.io` to the server.
-- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`. `pnpm --filter @studibrowse/server start` runs the built server.
-- `pnpm test:e2e` (Playwright, `/e2e`) is not set up yet; add it with the first e2e test.
+- `pnpm lint` (ESLint + Prettier check), `pnpm format`, `pnpm typecheck`, `pnpm test`, `pnpm build`. `pnpm --filter @studibrowse/server start` runs the built server.
+- `pnpm test:e2e` runs Playwright (`/e2e`) against the Vite dev server, which it starts itself. Run `pnpm --filter @studibrowse/e2e exec playwright install chromium` once first.
+- A Husky pre-commit hook runs lint-staged (ESLint --fix + Prettier on staged files). Don't bypass it with `--no-verify`.
 - `packages/shared` ships TypeScript source (no build step). Vite bundles it for the web app and tsup bundles it into `apps/server/dist`.
 - Before you say a task is done, run `pnpm lint && pnpm typecheck && pnpm test` and fix every failure. Never skip, delete or weaken a test to make it pass.
 

@@ -6,6 +6,7 @@ const valid = {
   PORT: '8080',
   MONGODB_URI: 'mongodb://localhost:27017/studibrowse',
   CLIENT_ORIGIN: 'http://localhost:5173',
+  LOG_LEVEL: 'warn',
 };
 
 describe('parseEnv', () => {
@@ -14,9 +15,14 @@ describe('parseEnv', () => {
     expect(result).toEqual({ ok: true, env: { ...valid, PORT: 8080 } });
   });
 
-  it('defaults NODE_ENV and PORT', () => {
+  it('defaults NODE_ENV, PORT and LOG_LEVEL', () => {
     const result = parseEnv({ MONGODB_URI: valid.MONGODB_URI, CLIENT_ORIGIN: valid.CLIENT_ORIGIN });
-    expect(result.ok && result.env).toMatchObject({ NODE_ENV: 'development', PORT: 4000 });
+    expect(result.ok && result.env).toMatchObject({ NODE_ENV: 'development', PORT: 4000, LOG_LEVEL: 'info' });
+  });
+
+  it('rejects an unknown LOG_LEVEL', () => {
+    const result = parseEnv({ ...valid, LOG_LEVEL: 'verbose' });
+    expect(result.ok).toBe(false);
   });
 
   it('names every missing variable', () => {

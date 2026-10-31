@@ -7,6 +7,7 @@ const envSchema = z.object({
     .string({ error: 'is required' })
     .regex(/^mongodb(\+srv)?:\/\//, 'must start with mongodb:// or mongodb+srv://'),
   CLIENT_ORIGIN: z.url({ error: 'is required and must be a URL, e.g. http://localhost:5173' }),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { logger } from '../lib/logger';
 
 const RETRY_DELAY_MS = 5000;
 
@@ -12,10 +13,10 @@ let retryTimer: NodeJS.Timeout | undefined;
 export async function connectToDatabase(uri: string): Promise<void> {
   try {
     await mongoose.connect(uri, { serverSelectionTimeoutMS: RETRY_DELAY_MS });
-    console.log('[db] connected');
+    logger.info('[db] connected');
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    console.error(`[db] connection failed (${reason}), retrying in ${RETRY_DELAY_MS / 1000}s`);
+    logger.error(`[db] connection failed (${reason}), retrying in ${RETRY_DELAY_MS / 1000}s`);
     retryTimer = setTimeout(() => void connectToDatabase(uri), RETRY_DELAY_MS);
   }
 }
@@ -27,8 +28,8 @@ export function isDatabaseConnected(): boolean {
 export async function disconnectFromDatabase(): Promise<void> {
   clearTimeout(retryTimer);
   await mongoose.disconnect();
-  console.log('[db] disconnected');
+  logger.info('[db] disconnected');
 }
 
-mongoose.connection.on('disconnected', () => console.warn('[db] lost connection'));
-mongoose.connection.on('reconnected', () => console.log('[db] reconnected'));
+mongoose.connection.on('disconnected', () => logger.warn('[db] lost connection'));
+mongoose.connection.on('reconnected', () => logger.info('[db] reconnected'));
