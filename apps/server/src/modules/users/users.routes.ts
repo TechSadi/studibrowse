@@ -13,6 +13,7 @@ export function createUsersRouter(): Router {
     controller.usernameAvailable,
   );
   router.patch('/me', requireAuth, validateBody(updateMeSchema), controller.updateMe);
+  router.get('/me/following', requireAuth, controller.following);
   router.get('/suggestions', requireAuth, controller.suggestions);
   router.post('/:id/follow', requireAuth, validateParams(userIdParamsSchema), controller.follow);
   router.delete('/:id/follow', requireAuth, validateParams(userIdParamsSchema), controller.unfollow);

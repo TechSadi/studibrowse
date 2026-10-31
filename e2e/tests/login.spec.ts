@@ -47,7 +47,7 @@ test.describe('Log in', () => {
     // The access token is in memory only; the reload restores the session through the refresh cookie.
     await page.reload();
     await expect(page).toHaveURL('/home');
-    await expect(page.getByText('@alexsmith')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: /, Alex$/ })).toBeVisible();
   });
 
   test('sends users who have not finished onboarding to onboarding', async ({ page }) => {

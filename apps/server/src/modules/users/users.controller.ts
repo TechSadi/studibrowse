@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import type {
+  FollowingResponse,
   MeResponse,
   SuggestionsResponse,
   UpdateMeData,
@@ -28,6 +29,10 @@ export const updateMe: RequestHandler<Record<string, string>, MeResponse, Update
 
 export const suggestions: RequestHandler<Record<string, string>, SuggestionsResponse> = async (req, res) => {
   res.json({ users: await usersService.listSuggestions(req.userId!) });
+};
+
+export const following: RequestHandler<Record<string, string>, FollowingResponse> = async (req, res) => {
+  res.json({ users: await usersService.listFollowing(req.userId!) });
 };
 
 export const follow: RequestHandler<UserIdParams, MeResponse> = async (req, res) => {

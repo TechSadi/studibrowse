@@ -1,12 +1,13 @@
 import {
   SUGGESTED_USERS_LIMIT,
+  type FollowedUser,
   type PublicUser,
   type SuggestedUser,
   type UpdateMeData,
 } from '@studibrowse/shared';
 import { unauthenticated } from '../auth/auth.errors';
 import { User } from './user.model';
-import { toPublicUser, toSuggestedUser } from './user.serializer';
+import { toFollowedUser, toPublicUser, toSuggestedUser } from './user.serializer';
 import { cannotFollowSelf, userNotFound } from './users.errors';
 
 /** `username` must already be normalised by the shared usernameSchema. */
@@ -39,6 +40,19 @@ export async function listSuggestions(userId: string): Promise<SuggestedUser[]> 
     .sort({ lastStudiedAt: -1, updatedAt: -1 })
     .limit(SUGGESTED_USERS_LIMIT);
   return users.map(toSuggestedUser);
+}
+
+/** The people you follow, in the order you followed them. Deleted accounts are left out. */
+export async function listFollowing(userId: string): Promise<FollowedUser[]> {
+  const me = await User.findById(userId, { following: 1 });
+  if (!me) throw unauthenticated();
+  const ids = me.following.map((id) => id.toString());
+  const users = await User.find({ _id: { $in: ids } });
+  const byId = new Map(users.map((user) => [user.id as string, user]));
+  return ids.flatMap((id) => {
+    const user = byId.get(id);
+    return user ? [toFollowedUser(user)] : [];
+  });
 }
 
 export async function follow(userId: string, targetId: string): Promise<PublicUser> {

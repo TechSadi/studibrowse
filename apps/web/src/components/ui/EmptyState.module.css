@@ -1,0 +1,31 @@
+.empty {
+  grid-column: 1 / -1;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 40px;
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  color: var(--muted);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.empty p {
+  max-width: 44ch;
+}
+
+.action {
+  margin-top: 10px;
+}
+
+@media (max-width: 767px) {
+  .empty {
+    padding: 32px 20px;
+  }
+}

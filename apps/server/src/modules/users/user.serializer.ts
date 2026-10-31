@@ -1,4 +1,4 @@
-import type { AvatarColor, PublicUser, SuggestedUser } from '@studibrowse/shared';
+import type { AvatarColor, FollowedUser, PublicUser, SuggestedUser } from '@studibrowse/shared';
 import type { UserDocument } from './user.model';
 
 /**
@@ -45,5 +45,15 @@ export function toSuggestedUser(user: UserDocument): SuggestedUser {
     avatarColor: user.avatarColor as AvatarColor,
     studying: user.studying,
     subjects: [...user.subjects],
+  };
+}
+
+/** Someone you follow, as the sidebar lists them: just enough for an avatar and a name. */
+export function toFollowedUser(user: UserDocument): FollowedUser {
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    avatarColor: user.avatarColor as AvatarColor,
   };
 }

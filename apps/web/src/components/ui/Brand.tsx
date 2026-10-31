@@ -7,7 +7,7 @@ export function Brand({ className }: { className?: string }) {
       <span className={styles.mark}>
         <Logo />
       </span>
-      StudiBrowse
+      <span className={styles.name}>StudiBrowse</span>
     </div>
   );
 }

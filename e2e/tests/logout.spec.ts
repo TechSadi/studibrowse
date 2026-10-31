@@ -5,8 +5,8 @@ test('logging out returns to Welcome and ends the session', async ({ page }) => 
   const api = await mockApi(page);
   api.signIn(api.addAccount(makeUser(), 'right-pass-1'));
 
-  await page.goto('/home');
-  await expect(page.getByText('@alexsmith')).toBeVisible();
+  await page.goto('/settings');
+  await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Log out' }).click();
 

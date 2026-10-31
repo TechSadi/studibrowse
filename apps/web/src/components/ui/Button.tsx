@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes } from 'react';
 import { Link, type LinkProps } from 'react-router';
 import styles from './Button.module.css';
 
-type Variant = 'primary' | 'ghost';
+type Variant = 'primary' | 'ghost' | 'light';
 type Size = 'md' | 'lg' | 'sm';
 
 interface StyleProps {

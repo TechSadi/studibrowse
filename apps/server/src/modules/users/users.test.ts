@@ -196,3 +196,46 @@ describe('GET /api/users/suggestions', () => {
     expect((await suggestions(token)).body.users).toHaveLength(5);
   });
 });
+
+describe('GET /api/users/me/following', () => {
+  function following(token: string) {
+    return request(app).get('/api/users/me/following').set('Authorization', `Bearer ${token}`);
+  }
+  function follow(token: string, id: string) {
+    return request(app).post(`/api/users/${id}/follow`).set('Authorization', `Bearer ${token}`);
+  }
+
+  it('needs a signed-in user', async () => {
+    expect((await request(app).get('/api/users/me/following')).status).toBe(401);
+  });
+
+  it('returns an empty list when you follow no one', async () => {
+    const { token } = await createUserWithToken();
+    const res = await following(token);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ users: [] });
+  });
+
+  it('lists the people you follow in the order you followed them, without private fields', async () => {
+    const { token } = await createUserWithToken();
+    const { user: maya } = await createUserWithToken({ name: 'Maya Kapoor' });
+    const { user: jordan } = await createUserWithToken({ name: 'Jordan Lee' });
+    await follow(token, jordan.id);
+    await follow(token, maya.id);
+
+    const res = await following(token);
+    expect(res.body.users.map((u: { name: string }) => u.name)).toEqual(['Jordan Lee', 'Maya Kapoor']);
+    expect(Object.keys(res.body.users[0]).sort()).toEqual(['avatarColor', 'id', 'name', 'username']);
+  });
+
+  it('leaves out people whose accounts were deleted', async () => {
+    const { token } = await createUserWithToken();
+    const { user: maya } = await createUserWithToken({ name: 'Maya Kapoor' });
+    const { user: gone } = await createUserWithToken({ name: 'Gone' });
+    await follow(token, maya.id);
+    await follow(token, gone.id);
+    await User.deleteOne({ _id: gone.id });
+
+    expect((await following(token)).body.users.map((u: { id: string }) => u.id)).toEqual([maya.id]);
+  });
+});

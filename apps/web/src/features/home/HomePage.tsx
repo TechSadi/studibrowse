@@ -1,16 +1,20 @@
-import { PlaceholderScreen } from '../../components/layout/PlaceholderScreen';
-import { useAuth } from '../auth/AuthContext';
-import { LogoutButton } from '../auth/LogoutButton';
+import { Hero } from './Hero';
+import styles from './Home.module.css';
+import { HomeHeader } from './HomeHeader';
+import { LiveRooms } from './LiveRooms';
+import { RecentSessions } from './RecentSessions';
+import { WeeklyFocus } from './WeeklyFocus';
 
-// TODO(phase-1 home): stand-in until the Home screen is built. It exists so sign-in redirects and logging out work.
 export function HomePage() {
-  const { state } = useAuth();
   return (
-    <PlaceholderScreen title="You're in">
-      <p>
-        Logged in as <b>@{state.user?.username}</b>. Home is coming next.
-      </p>
-      <LogoutButton />
-    </PlaceholderScreen>
+    <>
+      <HomeHeader />
+      <div className={styles.overview}>
+        <Hero />
+        <WeeklyFocus />
+      </div>
+      <LiveRooms />
+      <RecentSessions />
+    </>
   );
 }

@@ -1,6 +1,6 @@
 import { useTheme } from '../../hooks/useTheme';
 import { Icon } from './Icon';
-import styles from './ThemeToggle.module.css';
+import styles from './IconButton.module.css';
 
 export function ThemeToggle() {
   const { theme, toggle } = useTheme();

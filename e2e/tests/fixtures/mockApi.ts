@@ -1,5 +1,11 @@
 import type { Page, Route } from '@playwright/test';
-import type { ApiErrorBody, AuthResponse, PublicUser, SuggestedUser } from '@studibrowse/shared';
+import type {
+  ApiErrorBody,
+  AuthResponse,
+  FollowedUser,
+  PublicUser,
+  SuggestedUser,
+} from '@studibrowse/shared';
 
 /**
  * An in-memory stand-in for the auth API, so the e2e tests run against the Vite dev server alone.
@@ -157,6 +163,17 @@ export class MockApi {
             studying: user.studying,
             subjects: user.subjects,
           }));
+        return { status: 200, json: { users } };
+      }
+      case 'GET /api/users/me/following': {
+        const me = this.currentAccount();
+        if (!me) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const users: FollowedUser[] = me.user.following.flatMap((id) => {
+          const account = this.accounts.find((a) => a.user.id === id);
+          if (!account) return [];
+          const { name, username, avatarColor } = account.user;
+          return [{ id, name, username, avatarColor }];
+        });
         return { status: 200, json: { users } };
       }
       default: {

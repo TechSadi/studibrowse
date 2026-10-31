@@ -1,0 +1,54 @@
+.streak {
+  padding: 16px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--line);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.top b {
+  font-size: 14px;
+}
+
+.flame {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.flame :global(svg.i) {
+  width: 16px;
+  height: 16px;
+}
+
+.streak p {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.week {
+  display: flex;
+  gap: 5px;
+}
+
+.week i {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--amber);
+}
+
+.week i.off {
+  background: var(--surface-3);
+}

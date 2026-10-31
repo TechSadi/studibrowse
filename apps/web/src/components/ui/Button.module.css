@@ -43,6 +43,17 @@
   background: var(--surface-2);
 }
 
+/* Inverted button on the Home hero (.btn-light). */
+.light {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.light:hover:not(:disabled) {
+  background: var(--ink-2);
+  transform: translateY(-1px);
+}
+
 .sm {
   height: 36px;
   padding: 0 13px;

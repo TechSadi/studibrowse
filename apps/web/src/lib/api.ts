@@ -1,6 +1,7 @@
 import type {
   ApiErrorBody,
   AuthResponse,
+  FollowingResponse,
   ForgotPasswordInput,
   ForgotPasswordResponse,
   GoogleAuthInput,
@@ -160,6 +161,7 @@ export const usersApi = {
     ),
   updateMe: (input: UpdateMeInput) =>
     request<MeResponse>('PATCH', '/api/users/me', { body: input, auth: true }),
+  following: () => request<FollowingResponse>('GET', '/api/users/me/following', { auth: true }),
   suggestions: () => request<SuggestionsResponse>('GET', '/api/users/suggestions', { auth: true }),
   follow: (userId: string) =>
     request<MeResponse>('POST', `/api/users/${encodeURIComponent(userId)}/follow`, { auth: true }),

@@ -87,3 +87,15 @@ export interface SuggestedUser {
 export interface SuggestionsResponse {
   users: SuggestedUser[];
 }
+
+/** Someone you follow, as the sidebar lists them. */
+export interface FollowedUser {
+  id: string;
+  name: string;
+  username: string;
+  avatarColor: AvatarColor;
+}
+
+export interface FollowingResponse {
+  users: FollowedUser[];
+}
