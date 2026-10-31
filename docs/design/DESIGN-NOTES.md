@@ -10,6 +10,7 @@ How to read `studibrowse-mockup.html`. Open it in a browser; the "All screens" p
 | `#signup` | `/signup` | Google button, name, username with live availability check, email, password strength meter, terms |
 | `#login` | `/login` | Email or username, show/hide password, keep me logged in |
 | `#forgot` | `/forgot-password` | Email field, then "Check your inbox" sent state with resend |
+| (not in the mockup) | `/reset-password#token=…` | Link from the reset email. Same auth layout: new password with the strength meter; "Link expired" state with a link back to Forgot password |
 | `#onboarding` | `/onboarding` | 3 steps: avatar colour + subjects, weekly goal + default timer, follow people |
 | `#invite` | `/r/:inviteCode` (signed out) | Room preview, "Sign up to join" |
 | `#closed` | `/r/:inviteCode` when the room is gone | Room ended, follow the host, links to live rooms |

@@ -1,0 +1,94 @@
+/* Pieces shared by the auth forms (.auth-form and friends in the mockup). */
+.form {
+  width: min(420px, 100%);
+  margin: auto;
+  padding: 32px 0;
+  display: grid;
+  gap: 18px;
+}
+
+.form h1 {
+  font-size: clamp(28px, 3vw, 34px);
+  line-height: 1.1;
+}
+
+.sub {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 15.5px;
+}
+
+.sub b {
+  color: var(--ink);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.forgotLink {
+  font-size: 13.5px;
+}
+
+.footNote {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.stack {
+  display: grid;
+  gap: 18px;
+}
+
+.sent {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+}
+
+.sent .sub {
+  margin: 0;
+}
+
+.sentIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sentIcon :global(svg.i) {
+  width: 24px;
+  height: 24px;
+}
+
+@media (max-width: 680px) {
+  .grid2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

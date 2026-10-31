@@ -1,0 +1,71 @@
+.wrap {
+  position: relative;
+  border-radius: 12px;
+}
+
+/* The design's button (.btn-oauth in the mockup). */
+.face {
+  width: 100%;
+  height: 46px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14.5px;
+  transition: background 0.15s;
+}
+
+.face svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mark {
+  fill: var(--brand-google);
+}
+
+/* The pointer and keyboard focus are on Google's invisible button, so mirror its states onto the face. */
+.wrap:not(.off):hover .face {
+  background: var(--surface-2);
+}
+
+.wrap:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.off .face {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/*
+ * Google's real button, invisible and scaled (--sx, --sy set by GoogleButton.tsx) to cover the face exactly.
+ * Opacity stays just above 0 so browsers keep treating it as a visible, clickable element.
+ */
+.overlay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max-content;
+  transform: translate(-50%, -50%) scale(var(--sx, 1), var(--sy, 1));
+  opacity: 0.0001;
+  overflow: hidden;
+  color-scheme: normal;
+}
+
+.msg {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  text-align: center;
+}
+
+.msg[role='alert'] {
+  font-size: 13px;
+  color: var(--danger);
+}
