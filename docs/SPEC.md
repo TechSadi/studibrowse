@@ -138,7 +138,7 @@ REST handles everything that's requested once (login, profiles, room lists, hist
 
 | Collection | Key fields | Notes |
 | --- | --- | --- |
-| users | name, email, passwordHash or googleId, avatarUrl, weeklyGoalMins, streak, lastStudiedAt, following, notificationPrefs | Update the streak when a session is logged |
+| users | name, username (unique, case-insensitive), email (unique), passwordHash or googleId, avatarColor, subjects, weeklyGoalMins, timerDefaults, streak, lastStudiedAt, following, notificationPrefs, onboardedAt | Update the streak when a session is logged |
 | rooms | name, subject, description, hostId, isPublic, inviteCode, maxSize (20), emptySince, goals [{ text, done, addedBy }], timerSettings { focusMins, shortBreakMins, longBreakMins, roundsBeforeLong, totalRounds, autoStart }, timer { phase, round, endsAt, pausedRemaining }, totalSessions, totalFocusMins | `timer` is the source of truth. A cleanup job deletes the room, its messages and resources once emptySince is more than 5 minutes old |
 | sessions | roomId, roomName, startedAt, endedAt, participants [{ userId, focusedMins }], goalsDone, roundsCompleted | One per finished timer run; this powers room tracking and Progress |
 | messages | roomId, userId, text, createdAt | Index on roomId + createdAt; load the last 50 on join |

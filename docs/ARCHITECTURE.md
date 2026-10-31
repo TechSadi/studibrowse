@@ -23,7 +23,8 @@ For things requested once: auth, profiles, room lists, history.
 ```
 web (TanStack Query → fetch /api/...)
   → Vite proxy (dev) / same origin (prod)
-  → Express: request logger → helmet → CORS → JSON body (100 kB) → rate limit (/api/auth)
+  → Express: request logger → helmet → CORS → JSON body (100 kB) → cookies
+             (signup and login are also rate limited)
   → router (modules/<feature>/*.routes.ts)  validates input with the shared zod schema
   → controller                              reads req, calls the service, writes res
   → service                                 business logic + Mongoose; never sees req/res
@@ -31,7 +32,7 @@ web (TanStack Query → fetch /api/...)
 Errors at any step → errorHandler → { error: { code, message } }  (no stack traces)
 ```
 
-Protected routes run an auth middleware before the router that reads `Authorization: Bearer <access token>` and sets the user.
+Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `Authorization: Bearer <access token>` and sets `req.userId`.
 
 ## Request flow: Socket.IO
 
@@ -51,20 +52,35 @@ A handler that fails validation or a permission check acks `{ error: { code, mes
 
 ## Auth
 
-Built in Phase 1. Two tokens:
+Built in Phase 1 (`modules/auth`, `modules/users`). Two tokens:
 
-- **Access token:** a short-lived JWT (about 15 minutes) holding the user id. The web app keeps it in memory only, never in localStorage. It is sent as a Bearer header on REST calls and in the socket handshake.
-- **Refresh token:** a long-lived random token in an `httpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/auth`. The server stores only its hash so it can be revoked.
+- **Access token:** a JWT (HS256, `ACCESS_TOKEN_TTL_SECONDS`, 15 minutes by default) whose `sub` is the user id. The web app keeps it in memory only, never in localStorage. It is sent as a Bearer header on REST calls and in the socket handshake.
+- **Refresh token:** 32 random bytes in the `sb_refresh` cookie (`httpOnly`, `Secure`, `SameSite=Lax`, path `/api/auth`). The server stores only its SHA-256 hash in the `refreshtokens` collection (`userId`, `familyId`, `tokenHash`, `persistent`, `expiresAt` with a TTL index, `usedAt`), so it can be revoked. It lasts `REFRESH_TOKEN_TTL_DAYS` (30 by default) from the last refresh.
+
+Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails are stored lowercased, so their unique indexes are case-insensitive. Users leave the server only through `toPublicUser()` (`modules/users/user.serializer.ts`), which copies an explicit list of fields; `passwordHash` is also `select: false` on the model.
+
+| Endpoint | Does | Errors |
+| --- | --- | --- |
+| `POST /api/auth/signup` | Creates the account (shared `signupSchema`), sets the cookie, returns `{ accessToken, user }` (201) | 400 `VALIDATION_ERROR`, 409 `EMAIL_TAKEN` / `USERNAME_TAKEN` |
+| `POST /api/auth/login` | `identifier` is an email if it contains `@`, otherwise a username (shared `loginSchema`) | 401 `INVALID_CREDENTIALS` (same for unknown accounts, wrong passwords and Google-only accounts) |
+| `POST /api/auth/refresh` | Rotates the cookie, returns `{ accessToken, user }` | 401 `UNAUTHENTICATED`, 401 `REFRESH_TOKEN_REUSED`; the cookie is cleared on any failure |
+| `POST /api/auth/logout` | Deletes the session's tokens and clears the cookie (204, also without a cookie) | none |
+| `GET /api/auth/me` | `{ user }` for the access token | 401 `UNAUTHENTICATED`, 401 `TOKEN_EXPIRED` |
+| `GET /api/users/username-available?u=` | `{ available }`, for the live check on Sign up | 400 `VALIDATION_ERROR` |
+
+Only signup and login are rate limited; refresh and `/me` run on every page load.
 
 Flow:
 
 1. Sign up, log in or Google sign-in → the server sets the refresh cookie and returns an access token.
 2. On page load, the app calls `POST /api/auth/refresh` (the cookie is sent automatically) to get a fresh access token.
-3. When a REST call returns 401, the client refreshes once and retries. A socket rejected with an expired token reconnects with a new one.
-4. Refresh rotates the token: the old one is invalidated and a new cookie is set. Reusing an old refresh token revokes the whole session.
-5. Log out deletes the stored refresh token and clears the cookie.
+3. When a REST call returns 401 `TOKEN_EXPIRED`, the client refreshes once and retries. A socket rejected with an expired token reconnects with a new one.
+4. Refresh rotates the token: the old one is marked used and a new one in the same family is set as the cookie. Presenting a used token again revokes the whole family (that login on that device), not the user's other devices.
+5. Log out deletes the session's tokens and clears the cookie.
 
-"Keep me logged in" decides whether the cookie is persistent or a session cookie. The new env vars (JWT secret, token lifetimes) are added to `env.ts` and `.env.example` in Phase 1.
+"Keep me logged in" decides whether the cookie is persistent (`Max-Age`) or a session cookie; the choice is carried through every rotation. It defaults to on for sign-up and off for log in, matching the forms.
+
+Because each refresh token works exactly once, two tabs refreshing with the same cookie at the same moment would trip reuse detection. The web client must make sure only one refresh is in flight across tabs (for example with a Web Lock or BroadcastChannel).
 
 ## Timer: the server owns it
 

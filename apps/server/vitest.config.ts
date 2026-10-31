@@ -12,6 +12,9 @@ export default defineConfig({
       MONGODB_URI: 'mongodb://localhost:27017/studibrowse-test',
       CLIENT_ORIGIN: 'http://localhost:5173',
       LOG_LEVEL: 'silent',
+      JWT_ACCESS_SECRET: 'test-secret-that-is-at-least-32-characters-long',
+      // The minimum cost, so hashing doesn't dominate the auth tests.
+      BCRYPT_COST: '4',
     },
   },
 });
