@@ -10,7 +10,7 @@ studibrowse/
 ├── pnpm-workspace.yaml
 ├── docker-compose.yml            # local MongoDB
 ├── .env.example                  # every env var, documented, no secrets
-├── .github/workflows/ci.yml      # lint + typecheck + test on every push
+├── .github/workflows/ci.yml      # lint + typecheck + test + build on every push and PR
 ├── docs/
 │   ├── SPEC.md                   # product spec (source of truth)
 │   ├── ARCHITECTURE.md           # written in Phase 0, kept up to date
