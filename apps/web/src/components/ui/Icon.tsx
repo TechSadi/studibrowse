@@ -38,6 +38,7 @@ const ICONS = {
       <path d="m20 20-3.5-3.5" />
     </>
   ),
+  send: <path d="M21 3 10 14M21 3l-7 18-4-7-7-4z" />,
   sun: (
     <>
       <circle cx="12" cy="12" r="4" />

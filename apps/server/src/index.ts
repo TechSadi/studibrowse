@@ -5,6 +5,7 @@ import { env } from './config/env';
 import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from './db/connect';
 import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
+import { createChatHandlers } from './realtime/handlers/chat.handlers';
 import { createRoomHandlers } from './realtime/handlers/room.handlers';
 import { createTimerHandlers } from './realtime/handlers/timer.handlers';
 import { createIo } from './realtime/io';
@@ -18,7 +19,7 @@ const roomHandlers = createRoomHandlers();
 const roomTimer = createRoomTimer();
 const io = createIo(httpServer, {
   clientOrigin: env.CLIENT_ORIGIN,
-  registerHandlers: [roomHandlers.register, createTimerHandlers(roomTimer)],
+  registerHandlers: [roomHandlers.register, createTimerHandlers(roomTimer), createChatHandlers()],
 });
 
 httpServer.listen(env.PORT, () => {

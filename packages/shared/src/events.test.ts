@@ -82,6 +82,15 @@ describe('chatSendSchema', () => {
     expect(chatSendSchema.safeParse({ roomId, text: 'a'.repeat(CHAT_TEXT_MAX) }).success).toBe(true);
     expect(chatSendSchema.safeParse({ roomId, text: 'a'.repeat(CHAT_TEXT_MAX + 1) }).success).toBe(false);
   });
+
+  it('checks the length after trimming', () => {
+    const padded = `  ${'a'.repeat(CHAT_TEXT_MAX)}  `;
+    expect(chatSendSchema.parse({ roomId, text: padded }).text).toHaveLength(CHAT_TEXT_MAX);
+  });
+
+  it('rejects unknown keys', () => {
+    expect(chatSendSchema.safeParse({ roomId, text: 'hi', userId: roomId }).success).toBe(false);
+  });
 });
 
 describe('chatTypingSchema', () => {

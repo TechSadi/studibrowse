@@ -104,7 +104,11 @@ export const SUGGESTED_USERS_LIMIT = 5;
 /** How long a password reset link works. The Forgot password screen quotes it. */
 export const RESET_TOKEN_TTL_MINS = 30;
 
-export const CHAT_TEXT_MAX = 500;
+export const CHAT_TEXT_MAX = 1000;
+/** How long someone shows as typing after their last chat:typing, unless they send or stop first. */
+export const TYPING_CLEAR_MS = 3000;
+/** The shortest gap between a client's isTyping: true events. Under TYPING_CLEAR_MS so the line doesn't flicker. */
+export const TYPING_THROTTLE_MS = 2000;
 /** The "working on" note each member shows in a room. */
 export const WORKING_ON_MAX = 80;
 export const RESOURCE_TITLE_MAX = 80;
