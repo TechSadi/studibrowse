@@ -9,7 +9,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const app = createApp({ isDatabaseConnected, clientOrigin: env.CLIENT_ORIGIN });
 const httpServer = createServer(app);
-const io = createIo(httpServer, env.CLIENT_ORIGIN);
+const io = createIo(httpServer, { clientOrigin: env.CLIENT_ORIGIN });
 
 httpServer.listen(env.PORT, () => {
   logger.info(`[server] listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);

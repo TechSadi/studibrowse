@@ -2,15 +2,18 @@ import type { RequestHandler } from 'express';
 import type { z } from 'zod';
 import { AppError } from '../lib/errors';
 
-function validationError(error: z.ZodError): AppError {
+/** The message for the first issue. Shared by the REST validators and the socket handler wrapper. */
+export function validationMessage(error: z.ZodError): string {
   const issue = error.issues[0];
-  if (!issue) return new AppError(400, 'VALIDATION_ERROR', 'The request is not valid.');
+  if (!issue) return 'The request is not valid.';
   // Our own messages read as sentences; zod's generic type errors need the field name to make sense.
-  const message =
-    issue.code === 'invalid_type' && issue.path.length > 0
-      ? `${issue.path.join('.')}: ${issue.message}`
-      : issue.message;
-  return new AppError(400, 'VALIDATION_ERROR', message);
+  return issue.code === 'invalid_type' && issue.path.length > 0
+    ? `${issue.path.join('.')}: ${issue.message}`
+    : issue.message;
+}
+
+function validationError(error: z.ZodError): AppError {
+  return new AppError(400, 'VALIDATION_ERROR', validationMessage(error));
 }
 
 /** Replaces req.body with the parsed (trimmed, normalised, defaulted) value. */

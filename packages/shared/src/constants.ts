@@ -96,3 +96,19 @@ export const SUGGESTED_USERS_LIMIT = 5;
 
 /** How long a password reset link works. The Forgot password screen quotes it. */
 export const RESET_TOKEN_TTL_MINS = 30;
+
+export const CHAT_TEXT_MAX = 500;
+/** The "working on" note each member shows in a room. */
+export const WORKING_ON_MAX = 80;
+export const RESOURCE_TITLE_MAX = 80;
+export const RESOURCE_URL_MAX = 2048;
+
+export const MEMBER_STATUSES = ['focusing', 'break', 'away'] as const;
+export type MemberStatus = (typeof MEMBER_STATUSES)[number];
+
+export const RESOURCE_TYPES = ['link', 'file'] as const;
+export type ResourceType = (typeof RESOURCE_TYPES)[number];
+
+/** Room started, room full, someone joined, round ended. */
+export const NOTIFICATION_TYPES = ['roomStarted', 'roomFull', 'memberJoined', 'roundEnded'] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

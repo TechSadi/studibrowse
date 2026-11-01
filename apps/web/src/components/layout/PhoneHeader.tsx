@@ -3,6 +3,7 @@ import { useAuth } from '../../features/auth/AuthContext';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import { Avatar } from '../ui/Avatar';
 import { Brand } from '../ui/Brand';
+import { ConnectionStatus } from '../ui/ConnectionStatus';
 import { Icon } from '../ui/Icon';
 import iconButton from '../ui/IconButton.module.css';
 import { ThemeToggle } from '../ui/ThemeToggle';
@@ -20,6 +21,7 @@ export function PhoneHeader() {
         <Brand />
       </Link>
       <div className={styles.right}>
+        <ConnectionStatus />
         <ThemeToggle />
         <Link to="/notifications" className={iconButton.iconBtn} aria-label="Notifications">
           <Icon name="bell" />

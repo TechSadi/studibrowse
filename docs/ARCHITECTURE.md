@@ -39,16 +39,23 @@ Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `A
 For everything live inside a room, and for notifications.
 
 ```
-web: io(url, { auth: { token: <access token> } })
-  → io.use(): verify the JWT, attach userId to the socket, join private room `user:<id>`
+web: io({ auth: (cb) => cb({ token: <access token> }) })      (src/lib/socket.ts, opened after login)
+  → io.use(socketAuth): verify the JWT, set socket.data.userId    (realtime/socketAuth.ts)
+  → on connection: join private room `user:<id>`, add each feature's handlers   (realtime/io.ts)
   → client emits an event (e.g. timer:start) with an ack callback
-  → handler: 1. validate payload with the shared zod schema
-             2. check permissions (member of the room? host?)
-             3. call the service (same services as REST)
-             4. ack the sender, broadcast the result to `room:<roomId>`
+  → onEvent wrapper (realtime/handler.ts):
+             1. per-socket rate limit, if the event has one
+             2. validate payload with the shared zod schema (clientEventSchemas)
+             3. handler: check permissions (member of the room? host?), call the service (same services as REST)
+             4. ack { ok: true, data }, broadcast the result to `room:<roomId>`
 ```
 
-A handler that fails validation or a permission check acks `{ error: { code, message } }` and changes nothing. The server never sends per-second ticks. Every event is listed in `docs/SOCKET-EVENTS.md`.
+A handler that fails validation or a permission check acks `{ ok: false, error: { code, message } }` and changes nothing. Like the REST error handler, only `AppError` messages reach the client; anything else is logged and acked as `INTERNAL_ERROR`. Fire-and-forget events (`chat:typing`) go through `onSignal`, which drops what it rejects. The server never sends per-second ticks. Every event is listed in `docs/SOCKET-EVENTS.md`.
+
+- **Handshake errors** reach the client as `connect_error` with `err.data = { code, message }`: `UNAUTHENTICATED` or `TOKEN_EXPIRED`.
+- **Handlers** are registered per feature: `createIo(httpServer, { clientOrigin, registerHandlers })` takes a list of `(io, socket) => void` registrars (none yet). Tests pass their own.
+- **Rate limits** (`realtime/socketRateLimit.ts`, sliding window, in memory, per socket id, cleared on disconnect): `chat:send` 5 per 5 seconds (acks `RATE_LIMITED`), `chat:typing` 10 per 5 seconds (dropped).
+- **Tests** use `test/socketHelpers.ts`: `startSocketServer()` runs the real server on a random port, and `connectUsers(n)` saves users and connects an authenticated socket.io-client for each.
 
 ## Auth
 
@@ -116,6 +123,8 @@ Because each refresh token works exactly once, two tabs refreshing with the same
 - **Token storage:** `src/lib/api.ts` keeps the access token in a module variable, in memory only (never localStorage). All requests go through its `request()`, and the typed `authApi` / `usersApi` wrap the endpoints.
 - **One refresh at a time:** `refreshSession()` is single-flight inside a tab (concurrent callers share one promise, which also covers React StrictMode running the startup effect twice). Across tabs it runs inside a Web Lock (`navigator.locks`, name `sb-refresh`), so tabs refresh one after another and each sends the newest cookie.
 - **Expired tokens:** an authenticated call that gets 401 `TOKEN_EXPIRED` refreshes once and retries once. If that refresh fails, the session ends and the app treats the user as signed out.
+- **Socket:** `src/lib/socket.ts` holds one socket per tab, opened by `AuthContext` when the user is signed in and closed when they aren't. Its `auth` option is a function, so every reconnect sends the current access token. On `TOKEN_EXPIRED` it calls `refreshSession()` and reconnects; if the refresh is refused, or the token is expired again right after a refresh, or the server says `UNAUTHENTICATED`, it ends the session through `endSession()` in `api.ts`, the same path REST uses. A refresh that can't reach the server is retried after 5 seconds. `emitWithAck()` resolves with the ack data or throws `ApiError` (status 0, the server's code, or `NETWORK_ERROR` after 10 seconds without an answer). `hooks/useSocket.ts` exposes `useSocket()` (`{ socket, status }`) and `useSocketEvent(event, handler)`.
+- **Connection status:** `connecting` (first attempt), `connected`, `reconnecting` (after a drop or a failed first attempt) or `offline` (`navigator.onLine`). `components/ui/ConnectionStatus.tsx` shows a pill in the top bar and phone header only for `reconnecting` (amber) and `offline` (grey); it isn't in the mockup, so it reuses the live pill's shape.
 - **Session state:** `features/auth/AuthContext.tsx` restores the session on load (`loading` → `signedIn` or `signedOut`) and exposes `signIn`, `setUser` (swap in the `user` a profile or follow request returned) and `logout`.
 - **Route guards** (`features/auth/guards.tsx`):
   - `PublicOnlyRoute` wraps `/`, `/signup`, `/login` and `/forgot-password`. Signed-in users go to `resolveSignedInPath(user, next)`: `/onboarding` until `onboardedAt` is set, otherwise the `?next=` path (same-site paths only) or `/home`.
