@@ -1,0 +1,21 @@
+import { model, Schema, type HydratedDocument, type InferSchemaType } from 'mongoose';
+import { RESOURCE_TITLE_MAX, RESOURCE_TYPES, RESOURCE_URL_MAX } from '@studibrowse/shared';
+
+const resourceSchema = new Schema(
+  {
+    roomId: { type: Schema.Types.ObjectId, ref: 'Room', required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    type: { type: String, enum: RESOURCE_TYPES, required: true },
+    title: { type: String, required: true, trim: true, maxlength: RESOURCE_TITLE_MAX },
+    url: { type: String, required: true, maxlength: RESOURCE_URL_MAX },
+    /** Bytes, for files. Null for links. */
+    size: { type: Number, default: null },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } },
+);
+
+resourceSchema.index({ roomId: 1, createdAt: 1 });
+
+export type ResourceDocument = HydratedDocument<InferSchemaType<typeof resourceSchema>>;
+
+export const Resource = model('Resource', resourceSchema);

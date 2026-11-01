@@ -13,6 +13,7 @@ import {
   ROOM_SUBJECT_MAX,
   TIMER_LIMITS,
   type CreateRoomInput,
+  type RoomDetail,
   type TimerSettings,
 } from '@studibrowse/shared';
 import { Button } from '../../components/ui/Button';
@@ -24,6 +25,7 @@ import { Switch } from '../../components/ui/Switch';
 import { useToast } from '../../components/ui/Toast';
 import { roomsApi } from '../../lib/api';
 import { onRadioKeyDown } from '../../lib/radioGroup';
+import { emitWithAck } from '../../lib/socket';
 import { useAuth } from '../auth/AuthContext';
 import styles from './CreateRoomDialog.module.css';
 import { formatMins, timerPlan } from './timerText';
@@ -51,6 +53,7 @@ export const NAME_REQUIRED = 'Give your room a name so people know what they’r
 interface Draft {
   name: string;
   subject: string;
+  description: string;
   maxSize: number;
   isPublic: boolean;
   timerSettings: TimerSettings;
@@ -135,22 +138,52 @@ function GoalsField({ goals, onChange }: { goals: string[]; onChange: (goals: st
   );
 }
 
-/** Create a room (mockup `#roomForm`). On success it opens the new room with you as host. */
-export function CreateRoomDialog({ onClose }: { onClose: () => void }) {
+type CreateRoomDialogProps = { onClose: () => void } & (
+  | { mode?: 'create' }
+  /** The host's Room settings: the same dialog, filled in from the room. */
+  | { mode: 'settings'; room: RoomDetail; memberCount: number }
+);
+
+function draftFromRoom(room: RoomDetail): Draft {
+  return {
+    name: room.name,
+    subject: room.subject,
+    description: room.description,
+    maxSize: room.maxSize,
+    isPublic: room.isPublic,
+    timerSettings: { ...room.timerSettings },
+    goals: room.goals.map((goal) => goal.text),
+  };
+}
+
+/**
+ * Create a room (mockup `#roomForm`). On success it opens the new room with you as host. In `settings` mode it
+ * is the host's Room settings: saving sends room:settings, and everyone in the room gets the change.
+ */
+export function CreateRoomDialog(props: CreateRoomDialogProps) {
+  const { onClose } = props;
+  const editing = props.mode === 'settings' ? props : null;
   const { state } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
   const visibilityLabel = useId();
 
-  const [draft, setDraft] = useState<Draft>(() => ({
-    name: '',
-    subject: '',
-    maxSize: DEFAULT_ROOM_SIZE,
-    isPublic: true,
-    timerSettings: { ...(state.user?.timerDefaults ?? DEFAULT_TIMER), autoStart: true },
-    goals: [STARTER_GOAL],
-  }));
+  const [draft, setDraft] = useState<Draft>(() =>
+    editing
+      ? draftFromRoom(editing.room)
+      : {
+          name: '',
+          subject: '',
+          description: '',
+          maxSize: DEFAULT_ROOM_SIZE,
+          isPublic: true,
+          timerSettings: { ...(state.user?.timerDefaults ?? DEFAULT_TIMER), autoStart: true },
+          goals: [STARTER_GOAL],
+        },
+  );
+  // Nobody already in the room loses their seat.
+  const minSize = editing ? Math.max(MIN_ROOM_SIZE, editing.memberCount) : MIN_ROOM_SIZE;
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const update = (change: Partial<Draft>) => setDraft((d) => ({ ...d, ...change }));
@@ -161,12 +194,22 @@ export function CreateRoomDialog({ onClose }: { onClose: () => void }) {
     mutationFn: (input: CreateRoomInput) => roomsApi.create(input),
     onSuccess: ({ room }) => {
       void queryClient.invalidateQueries({ queryKey: ['rooms', 'public'] });
-      queryClient.setQueryData(['rooms', room.id], { room });
       navigate(`/room/${room.id}`);
       toast({ icon: 'link', title: 'Room created', detail: 'Copy the invite link to bring people in.' });
     },
     onError: (error) => setFormError(error.message),
   });
+
+  const save = useMutation({
+    mutationFn: (input: CreateRoomInput) =>
+      emitWithAck('room:settings', { roomId: editing?.room.id ?? '', ...input }),
+    onSuccess: () => {
+      toast({ icon: 'check', title: 'Room settings saved', detail: 'Everyone in the room sees the change.' });
+      onClose();
+    },
+    onError: (error) => setFormError(error.message),
+  });
+  const pending = create.isPending || save.isPending;
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -182,7 +225,8 @@ export function CreateRoomDialog({ onClose }: { onClose: () => void }) {
       }
       return;
     }
-    create.mutate(result.data);
+    if (editing) save.mutate(result.data);
+    else create.mutate(result.data);
   }
 
   const footer = (
@@ -192,8 +236,8 @@ export function CreateRoomDialog({ onClose }: { onClose: () => void }) {
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? 'Creating…' : 'Create and open'}
+        <Button type="submit" disabled={pending}>
+          {editing ? (pending ? 'Saving…' : 'Save changes') : pending ? 'Creating…' : 'Create and open'}
         </Button>
       </div>
     </>
@@ -201,8 +245,12 @@ export function CreateRoomDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title="Create a study room"
-      subtitle="You'll be the host. Anyone with the link can join once they've signed in."
+      title={editing ? 'Room settings' : 'Create a study room'}
+      subtitle={
+        editing
+          ? 'Changes apply to everyone. Timer changes start from the next round.'
+          : "You'll be the host. Anyone with the link can join once they've signed in."
+      }
       onClose={onClose}
       onSubmit={onSubmit}
       footer={footer}
@@ -242,7 +290,7 @@ export function CreateRoomDialog({ onClose }: { onClose: () => void }) {
             <input
               id="room-size"
               type="range"
-              min={MIN_ROOM_SIZE}
+              min={minSize}
               max={MAX_ROOM_SIZE}
               value={draft.maxSize}
               aria-valuetext={`${draft.maxSize} people`}

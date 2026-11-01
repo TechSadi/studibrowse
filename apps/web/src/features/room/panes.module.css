@@ -1,0 +1,137 @@
+/* The Goals and Files panes of the side panel (.pane-scroll, .goal, .res in the mockup). */
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.goalProgress {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.barTrack {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.barTrack i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), rgb(var(--glow-mint)));
+  border-radius: 99px;
+}
+
+.goals,
+.files {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.goal {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  margin: 0 -12px;
+  border-radius: 12px;
+}
+
+.box {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 7px;
+  border: 1.5px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  color: transparent;
+  margin-top: 1px;
+}
+
+.box svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.6;
+}
+
+.goal.done .box {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.goal b {
+  display: block;
+  font-weight: 600;
+  font-size: 14.5px;
+}
+
+.goal.done b {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+.goal small,
+.res small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.res {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  margin: 0 -12px;
+  border-radius: 12px;
+}
+
+.res:hover {
+  background: var(--surface);
+}
+
+.ftile {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  flex: none;
+  background: var(--av1);
+  color: var(--av1i);
+}
+
+.ftile.link {
+  background: var(--av3);
+  color: var(--av3i);
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.res b {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.open {
+  width: 36px;
+  height: 36px;
+}

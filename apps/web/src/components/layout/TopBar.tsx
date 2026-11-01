@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useSearchParam } from '../../hooks/useSearchParam';
 import { useSlashShortcut } from '../../hooks/useSlashShortcut';
+import { ConnectionStatus } from '../ui/ConnectionStatus';
 import { Icon } from '../ui/Icon';
 import iconButton from '../ui/IconButton.module.css';
 import { ThemeToggle } from '../ui/ThemeToggle';
@@ -48,7 +49,7 @@ function TopSearch() {
   );
 }
 
-/** Breadcrumb, search, theme toggle and notifications (desktop and tablet; hidden on phones). */
+/** Breadcrumb, search, connection status, theme toggle and notifications (desktop and tablet; hidden on phones). */
 export function TopBar({ crumb }: { crumb: string }) {
   return (
     <div className={styles.topbar}>
@@ -57,6 +58,7 @@ export function TopBar({ crumb }: { crumb: string }) {
         <b aria-current="page">{crumb}</b>
       </nav>
       <TopSearch />
+      <ConnectionStatus />
       <ThemeToggle />
       <Link to="/notifications" className={iconButton.iconBtn} aria-label="Notifications">
         <Icon name="bell" />

@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AuthResponse, PublicUser } from '@studibrowse/shared';
 import { authApi, refreshSession, setAccessToken, setSessionEndedHandler } from '../../lib/api';
+import { connectSocket, disconnectSocket } from '../../lib/socket';
 
 type AuthState =
   | { status: 'loading'; user: null }
@@ -39,6 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionEndedHandler(null);
     };
   }, []);
+
+  // The socket lives exactly as long as the session: login opens it, logout or an ended session closes it.
+  useEffect(() => {
+    if (state.status !== 'signedIn') return;
+    connectSocket();
+    return disconnectSocket;
+  }, [state.status]);
 
   const signIn = useCallback((session: AuthResponse) => {
     setAccessToken(session.accessToken);

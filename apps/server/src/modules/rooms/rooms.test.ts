@@ -1,12 +1,14 @@
+import { Types } from 'mongoose';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { INVITE_CODE_PATTERN, type CreateRoomInput, type RoomSummary } from '@studibrowse/shared';
 import { createApp } from '../../app';
-import { addMember, resetPresence } from '../../realtime/presence';
+import { addSocket, resetPresence } from '../../realtime/presence';
 import { createUserWithToken } from '../../test/authHelpers';
 import { useTestDatabase } from '../../test/testDb';
 import { User } from '../users/user.model';
 import { Room } from './room.model';
+import { hostRoomsPerWeek } from './rooms.service';
 
 useTestDatabase();
 afterEach(resetPresence);
@@ -72,7 +74,7 @@ describe('POST /api/rooms', () => {
       host: { id: user.id, name: user.name, username: user.username },
       goals: [{ text: 'Finish chapter 4', done: false, addedBy: user.id }],
       timerSettings,
-      timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+      timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
       totalSessions: 0,
       totalFocusMins: 0,
     });
@@ -296,8 +298,16 @@ describe('GET /api/rooms/public', () => {
     const { token } = await createUserWithToken();
     const full = await createRoomOk(token, { name: 'Full', maxSize: 2 });
     await createRoomOk(token, { name: 'Roomy', maxSize: 2 });
-    addMember(full.id, 'a', 2);
-    addMember(full.id, 'b', 2);
+    for (const userId of ['a', 'b']) {
+      addSocket(full.id, `socket-${userId}`, {
+        userId,
+        profile: { name: userId, username: userId, avatarColor: 'green' },
+        status: 'focusing',
+        maxSize: 2,
+        hostId: 'a',
+        now: new Date(),
+      });
+    }
 
     const all = (await listPublic(token)).body.rooms as RoomSummary[];
     expect(all.find((room) => room.name === 'Full')?.memberCount).toBe(2);
@@ -373,19 +383,72 @@ describe('GET /api/rooms/invite/:code', () => {
 
   it('previews a room for someone signed out, with public data only', async () => {
     const { user, token } = await createUserWithToken({ name: 'Maya Kapoor' });
-    const room = await createRoomOk(token, { isPublic: false, goals: ['Finish chapter 4'] });
+    const room = await createRoomOk(token, {
+      isPublic: false,
+      description: 'Bring your past papers.',
+      goals: ['Finish chapter 4'],
+    });
 
     const res = await preview(room.inviteCode);
     expect(res.status).toBe(200);
-    expect(res.body.room).toEqual({
-      name: 'Finals week focus',
-      subject: 'Maths',
-      host: { id: user.id, name: 'Maya Kapoor', username: user.username, avatarColor: user.avatarColor },
-      memberCount: 0,
-      maxSize: 10,
-      timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
-      timerSettings,
-      goals: [{ text: 'Finish chapter 4', done: false }],
+    expect(res.body).toEqual({
+      status: 'open',
+      room: {
+        id: room.id,
+        name: 'Finals week focus',
+        subject: 'Maths',
+        description: 'Bring your past papers.',
+        host: { id: user.id, name: 'Maya Kapoor', username: user.username, avatarColor: user.avatarColor },
+        memberCount: 0,
+        members: [],
+        maxSize: 10,
+        timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
+        timerSettings,
+        goals: [{ text: 'Finish chapter 4', done: false }],
+      },
+    });
+  });
+
+  it('shows the first four people as initials only, longest present first', async () => {
+    const { token } = await createUserWithToken();
+    const room = await createRoomOk(token);
+    const names = ['Jordan Lee', 'Ravi Lal', 'Nina King', 'Sam Ortiz', 'Ada Byron'];
+    names.forEach((name, i) =>
+      addSocket(room.id, `socket-${i}`, {
+        userId: `user-${i}`,
+        profile: { name, username: `secret-handle-${i}`, avatarColor: 'blue' },
+        status: 'break',
+        maxSize: 10,
+        hostId: 'host',
+        now: new Date(1000 * i),
+      }),
+    );
+
+    const res = await preview(room.inviteCode);
+    expect(res.body.room.memberCount).toBe(5);
+    expect(res.body.room.members).toEqual(
+      ['JL', 'RL', 'NK', 'SO'].map((initials) => ({ initials, avatarColor: 'blue' })),
+    );
+    expect(JSON.stringify(res.body)).not.toContain('secret-handle');
+    expect(JSON.stringify(res.body)).not.toContain('user-0');
+  });
+
+  it('answers a closed room with its name and host, so you can follow them', async () => {
+    const { user, token } = await createUserWithToken({ name: 'Jordan Lee' });
+    const room = await createRoomOk(token, { goals: ['Gone with the room'] });
+    await createRoomOk(token);
+    await Room.updateOne({ _id: room.id }, { closedAt: new Date() });
+
+    const res = await preview(room.inviteCode);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      status: 'closed',
+      room: {
+        name: 'Finals week focus',
+        host: { id: user.id, name: 'Jordan Lee', username: user.username, avatarColor: user.avatarColor },
+        // 2 rooms in 4 weeks rounds to 1 a week.
+        roomsPerWeek: 1,
+      },
     });
   });
 
@@ -395,18 +458,42 @@ describe('GET /api/rooms/invite/:code', () => {
     expect(res.body.error.code).toBe('ROOM_NOT_FOUND');
   });
 
-  it('answers 410 ROOM_CLOSED for a closed room', async () => {
-    const { token } = await createUserWithToken();
+  it('answers 404 ROOM_NOT_FOUND when the host account is gone', async () => {
+    const { user, token } = await createUserWithToken();
     const room = await createRoomOk(token);
-    await Room.updateOne({ _id: room.id }, { closedAt: new Date() });
+    await User.deleteOne({ _id: user.id });
     const res = await preview(room.inviteCode);
-    expect(res.status).toBe(410);
-    expect(res.body.error.code).toBe('ROOM_CLOSED');
+    expect(res.status).toBe(404);
   });
 
   it('rejects a malformed code with 400 VALIDATION_ERROR', async () => {
     const res = await preview('short');
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('hostRoomsPerWeek', () => {
+  const now = new Date('2026-11-01T12:00:00Z');
+  const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+  it('averages the rooms opened in the last 4 weeks and ignores older ones', async () => {
+    const { user, token } = await createUserWithToken();
+    const ages = [1, 5, 9, 13, 20, 27, 40];
+    for (const days of ages) {
+      const room = await createRoomOk(token);
+      // The raw driver, because Mongoose won't overwrite createdAt.
+      await Room.collection.updateOne(
+        { _id: new Types.ObjectId(room.id) },
+        { $set: { createdAt: daysAgo(days) } },
+      );
+    }
+    // 6 rooms inside the window → 1.5 a week, rounded to 2.
+    expect(await hostRoomsPerWeek(user.id, now)).toBe(2);
+  });
+
+  it('is 0 for someone who hasn’t hosted lately', async () => {
+    const { user } = await createUserWithToken();
+    expect(await hostRoomsPerWeek(user.id, now)).toBe(0);
   });
 });

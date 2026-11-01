@@ -16,14 +16,14 @@ export const timerSettingsSchema = timerDefaultsSchema.extend({
   autoStart: z.boolean(),
 });
 
-const goalTextSchema = z
+export const goalTextSchema = z
   .string()
   .trim()
   .min(1, 'Goals can’t be empty.')
   .max(GOAL_TEXT_MAX, `Keep each goal to ${GOAL_TEXT_MAX} characters.`);
 
 /**
- * POST /api/rooms, and later the host's Room settings dialog (roomSettingsSchema).
+ * POST /api/rooms, and the host's Room settings dialog (roomSettingsSchema, sent as room:settings).
  * Strict, so the host, invite code and timer state can't be set from the client.
  */
 export const createRoomSchema = z.strictObject({
@@ -70,8 +70,11 @@ export const publicRoomsQuerySchema = z.object({
   filter: z.enum(ROOM_FILTERS, 'That filter is not valid.').default('all'),
 });
 
+/** A MongoDB ObjectId as a 24-character hex string. */
+export const objectIdSchema = (message: string) => z.string().regex(/^[a-f0-9]{24}$/i, message);
+
 export const roomIdParamsSchema = z.object({
-  id: z.string().regex(/^[a-f0-9]{24}$/i, 'That room id is not valid.'),
+  id: objectIdSchema('That room id is not valid.'),
 });
 
 export const inviteCodeParamsSchema = z.object({

@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { loginSchema } from '@studibrowse/shared';
 import { Button } from '../../components/ui/Button';
 import { CheckLine } from '../../components/ui/CheckLine';
@@ -12,6 +12,8 @@ import { useAuthForm } from './useAuthForm';
 
 export function LoginPage() {
   const { signIn } = useAuth();
+  // Keep ?next= (e.g. from an invite link) when switching between Sign up and Log in.
+  const { search } = useLocation();
   // "Keep me logged in" starts off on Log in (shared computers); see docs/ARCHITECTURE.md.
   const form = useAuthForm({
     formId: 'login',
@@ -72,7 +74,7 @@ export function LoginPage() {
         </Button>
         <p className={styles.footNote}>
           New to StudiBrowse?{' '}
-          <Link className="text-link" to="/signup">
+          <Link className="text-link" to={{ pathname: '/signup', search }}>
             Create an account
           </Link>
         </p>

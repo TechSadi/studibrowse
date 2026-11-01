@@ -1,0 +1,35 @@
+/* .closed-card and .closed-ico in the mockup; the page and card come from SoloScreen. */
+.card {
+  text-align: center;
+  justify-items: center;
+  display: grid;
+  gap: 10px;
+}
+
+.card p {
+  max-width: 40ch;
+}
+
+.ico {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.ico svg {
+  width: 28px;
+  height: 28px;
+}
+
+.actions {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}

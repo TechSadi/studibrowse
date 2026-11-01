@@ -5,3 +5,20 @@ export const roomNotFound = () =>
   new AppError(404, 'ROOM_NOT_FOUND', 'We couldn’t find that room. Check the link and try again.');
 
 export const roomClosed = () => new AppError(410, 'ROOM_CLOSED', 'This room has ended.');
+
+export const roomFull = () =>
+  new AppError(409, 'ROOM_FULL', 'This room is full. Try another room or open your own.');
+
+export const notAMember = () => new AppError(403, 'NOT_A_MEMBER', 'Join the room first.');
+
+export const notHost = (message = 'Only the host can control the timer.') =>
+  new AppError(403, 'NOT_HOST', message);
+
+export const invalidTimerCommand = (message: string) => new AppError(409, 'INVALID_TIMER_COMMAND', message);
+
+export const roomTooSmall = (memberCount: number) =>
+  new AppError(
+    409,
+    'ROOM_TOO_SMALL',
+    `${memberCount} people are in the room, so it can’t hold fewer than ${memberCount}.`,
+  );

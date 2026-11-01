@@ -15,7 +15,8 @@ export const INVITE_CODE_PATTERN = /^[A-Za-z0-9_-]{10}$/;
 /** Rooms worth joining loads 3 rows of 3 at a time. */
 export const PUBLIC_ROOMS_PAGE_SIZE = 9;
 
-export const TIMER_PHASES = ['focus', 'shortBreak', 'longBreak'] as const;
+/** `idle`: not started yet. `done`: every round finished. See docs/ARCHITECTURE.md › Timer. */
+export const TIMER_PHASES = ['idle', 'focus', 'shortBreak', 'longBreak', 'done'] as const;
 export type TimerPhase = (typeof TIMER_PHASES)[number];
 
 /** The Home room filters, in mockup order. */
@@ -24,6 +25,12 @@ export type RoomFilter = (typeof ROOM_FILTERS)[number];
 
 /** How long an empty room stays open, so a refresh or dropped connection doesn't end it. */
 export const ROOM_GRACE_MS = 5 * 60 * 1000;
+
+/** How long someone whose last tab dropped keeps their place in a room before they count as gone. */
+export const RECONNECT_GRACE_MS = 30 * 1000;
+
+/** How much chat history room:join sends. */
+export const RECENT_MESSAGES_LIMIT = 50;
 
 export const MAX_GOALS = 10;
 
@@ -96,3 +103,23 @@ export const SUGGESTED_USERS_LIMIT = 5;
 
 /** How long a password reset link works. The Forgot password screen quotes it. */
 export const RESET_TOKEN_TTL_MINS = 30;
+
+export const CHAT_TEXT_MAX = 1000;
+/** How long someone shows as typing after their last chat:typing, unless they send or stop first. */
+export const TYPING_CLEAR_MS = 3000;
+/** The shortest gap between a client's isTyping: true events. Under TYPING_CLEAR_MS so the line doesn't flicker. */
+export const TYPING_THROTTLE_MS = 2000;
+/** The "working on" note each member shows in a room. */
+export const WORKING_ON_MAX = 80;
+export const RESOURCE_TITLE_MAX = 80;
+export const RESOURCE_URL_MAX = 2048;
+
+export const MEMBER_STATUSES = ['focusing', 'break', 'away'] as const;
+export type MemberStatus = (typeof MEMBER_STATUSES)[number];
+
+export const RESOURCE_TYPES = ['link', 'file'] as const;
+export type ResourceType = (typeof RESOURCE_TYPES)[number];
+
+/** Room started, room full, someone joined, round ended. */
+export const NOTIFICATION_TYPES = ['roomStarted', 'roomFull', 'memberJoined', 'roundEnded'] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

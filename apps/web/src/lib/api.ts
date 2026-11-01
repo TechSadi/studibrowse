@@ -52,6 +52,12 @@ export function setSessionEndedHandler(handler: (() => void) | null) {
   onSessionEnded = handler;
 }
 
+/** Ends the session because it can't be refreshed. Used by REST calls here and by the socket. */
+export function endSession() {
+  accessToken = null;
+  onSessionEnded?.();
+}
+
 interface RequestOptions {
   body?: unknown;
   auth?: boolean;
@@ -109,7 +115,7 @@ export async function request<T>(method: string, path: string, options: RequestO
     try {
       await refreshSession();
     } catch (refreshError) {
-      onSessionEnded?.();
+      endSession();
       throw refreshError;
     }
     res = await send(method, path, options);

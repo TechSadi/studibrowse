@@ -39,16 +39,24 @@ Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `A
 For everything live inside a room, and for notifications.
 
 ```
-web: io(url, { auth: { token: <access token> } })
-  → io.use(): verify the JWT, attach userId to the socket, join private room `user:<id>`
+web: io({ auth: (cb) => cb({ token: <access token> }) })      (src/lib/socket.ts, opened after login)
+  → io.use(socketAuth): verify the JWT, set socket.data.userId    (realtime/socketAuth.ts)
+  → on connection: join private room `user:<id>`, add each feature's handlers   (realtime/io.ts)
   → client emits an event (e.g. timer:start) with an ack callback
-  → handler: 1. validate payload with the shared zod schema
-             2. check permissions (member of the room? host?)
-             3. call the service (same services as REST)
-             4. ack the sender, broadcast the result to `room:<roomId>`
+  → onEvent wrapper (realtime/handler.ts):
+             1. per-socket rate limit, if the event has one
+             2. validate payload with the shared zod schema (clientEventSchemas)
+             3. handler: check permissions (member of the room? host?), call the service (same services as REST)
+             4. ack { ok: true, data }, broadcast the result to `room:<roomId>`
 ```
 
-A handler that fails validation or a permission check acks `{ error: { code, message } }` and changes nothing. The server never sends per-second ticks. Every event is listed in `docs/SOCKET-EVENTS.md`.
+A handler that fails validation or a permission check acks `{ ok: false, error: { code, message } }` and changes nothing. Like the REST error handler, only `AppError` messages reach the client; anything else is logged and acked as `INTERNAL_ERROR`. Fire-and-forget events (`chat:typing`) go through `onSignal`, which drops what it rejects. The server never sends per-second ticks. Every event is listed in `docs/SOCKET-EVENTS.md`.
+
+- **Handshake errors** reach the client as `connect_error` with `err.data = { code, message }`: `UNAUTHENTICATED` or `TOKEN_EXPIRED`.
+- **Handlers** are registered per feature: `createIo(httpServer, { clientOrigin, registerHandlers })` takes a list of `(io, socket) => void` registrars: the room handlers (`realtime/handlers/room.handlers.ts`), the timer handlers (`realtime/handlers/timer.handlers.ts`), the chat handlers (`realtime/handlers/chat.handlers.ts`) and the room settings handler (`realtime/handlers/settings.handlers.ts`). Tests pass their own.
+- **Rate limits** (`realtime/socketRateLimit.ts`, sliding window, in memory, per socket id, cleared on disconnect): `chat:send` 5 per 5 seconds (acks `RATE_LIMITED`), `chat:typing` 10 per 5 seconds (dropped).
+- **Chat** (`realtime/handlers/chat.handlers.ts`, `modules/chat/chat.service.ts`): `chat:send` checks the socket is in the room, saves the message, then sends `chat:new` to the whole room, sender included, so their other tabs stay in step. `chat:typing` is relayed to the rest of the room and never stored. Clients send `isTyping: true` at most every `TYPING_THROTTLE_MS` (2 s) while the draft isn't empty, and `false` when it's cleared, sent or the room is left; receivers stop showing someone `TYPING_CLEAR_MS` (3 s) after their last event, or as soon as their message arrives. On the web, `features/room/chat/` renders messages as React text (never as HTML) and turns only http(s) and `www.` links into `<a target="_blank" rel="noopener noreferrer">` (`linkify.ts`).
+- **Tests** use `test/socketHelpers.ts`: `startSocketServer()` runs the real server on a random port, and `connectUsers(n)` saves users and connects an authenticated socket.io-client for each.
 
 ## Auth
 
@@ -116,6 +124,8 @@ Because each refresh token works exactly once, two tabs refreshing with the same
 - **Token storage:** `src/lib/api.ts` keeps the access token in a module variable, in memory only (never localStorage). All requests go through its `request()`, and the typed `authApi` / `usersApi` wrap the endpoints.
 - **One refresh at a time:** `refreshSession()` is single-flight inside a tab (concurrent callers share one promise, which also covers React StrictMode running the startup effect twice). Across tabs it runs inside a Web Lock (`navigator.locks`, name `sb-refresh`), so tabs refresh one after another and each sends the newest cookie.
 - **Expired tokens:** an authenticated call that gets 401 `TOKEN_EXPIRED` refreshes once and retries once. If that refresh fails, the session ends and the app treats the user as signed out.
+- **Socket:** `src/lib/socket.ts` holds one socket per tab, opened by `AuthContext` when the user is signed in and closed when they aren't. Its `auth` option is a function, so every reconnect sends the current access token. On `TOKEN_EXPIRED` it calls `refreshSession()` and reconnects; if the refresh is refused, or the token is expired again right after a refresh, or the server says `UNAUTHENTICATED`, it ends the session through `endSession()` in `api.ts`, the same path REST uses. A refresh that can't reach the server is retried after 5 seconds. `emitWithAck()` resolves with the ack data or throws `ApiError` (status 0, the server's code, or `NETWORK_ERROR` after 10 seconds without an answer). `hooks/useSocket.ts` exposes `useSocket()` (`{ socket, status }`) and `useSocketEvent(event, handler)`.
+- **Connection status:** `connecting` (first attempt), `connected`, `reconnecting` (after a drop or a failed first attempt) or `offline` (`navigator.onLine`). `components/ui/ConnectionStatus.tsx` shows a pill in the top bar and phone header only for `reconnecting` (amber) and `offline` (grey); it isn't in the mockup, so it reuses the live pill's shape.
 - **Session state:** `features/auth/AuthContext.tsx` restores the session on load (`loading` → `signedIn` or `signedOut`) and exposes `signIn`, `setUser` (swap in the `user` a profile or follow request returned) and `logout`.
 - **Route guards** (`features/auth/guards.tsx`):
   - `PublicOnlyRoute` wraps `/`, `/signup`, `/login` and `/forgot-password`. Signed-in users go to `resolveSignedInPath(user, next)`: `/onboarding` until `onboardedAt` is set, otherwise the `?next=` path (same-site paths only) or `/home`.
@@ -137,37 +147,75 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 | `POST /api/rooms` | signed in | `createRoomSchema`: name (≤ 60), subject (optional, ≤ 40), description (optional, ≤ 200), `isPublic`, `maxSize` 2 to 20, up to 10 goals (≤ 80 each), `timerSettings` (the `TIMER_LIMITS` ranges, plus `autoStart`). The creator becomes the host. Answers 201 with the `RoomDetail`. |
 | `GET /api/rooms/public` | signed in | Rooms worth joining. `page` (9 per page, `nextPage` is null on the last), `subject` (exact, any case), `q` (name or subject contains, plain text), `filter` = `all`, `open` (has space), `focus` or `break`. |
 | `GET /api/rooms/:id` | signed in | One room. |
-| `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview: name, subject, host, member count, size, timer and goal texts. No ids or codes. 404 `ROOM_NOT_FOUND`, 410 `ROOM_CLOSED`. |
+| `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview. An open room answers `{ status: 'open', room }`: id, name, subject, description, host, member count, the first 4 people as initials and avatar colour only, size, timer and goal texts. A closed room answers `{ status: 'closed', room }`: name, host and `roomsPerWeek` (rooms the host opened in the last 4 weeks ÷ 4, rounded), for the Room closed page. 404 `ROOM_NOT_FOUND` for an unknown code or a host account that's gone. |
 
-- **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts paused at a full first focus round: `{ phase: 'focus', round: 1, endsAt: null, pausedRemaining: focusMins }`.
-- **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission.
+- **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts idle: `{ phase: 'idle', round: 1, endsAt: null, pausedRemaining: null }`.
+- **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission. It includes the room id so a signed-in visitor can be sent into the room; the id grants nothing on its own, since joining a private room still needs the code.
 - **Order:** rooms hosted by people you follow first, then newest (`$addFields hostFollowed` in an aggregation, with the host joined by `$lookup`). Rooms whose host account is gone are left out.
 - **Phase filters** count only running timers: a paused or not-yet-started room is neither "In a focus round" nor "On a break".
 - **Invite codes:** `nanoid(10)` (URL-safe alphabet, cryptographic randomness, 64^10 codes), unique index, retried on the rare collision. `INVITE_CODE_PATTERN` in shared is the one definition of a valid code; the Home join box uses it too.
-- **Member counts** come from the in-memory presence store (`realtime/presence.ts`). Until sockets join rooms, every room reports 0. "Has space" leaves out `fullRoomIds()` in the database query, so paging stays correct.
-- **Web:** `roomsApi` in `lib/api.ts`. `features/rooms/CreateRoomDialog.tsx` (rendered by Home while `?create=1` is set, starting from your timer defaults) creates the room, seeds the `['rooms', id]` query and opens `/room/:id`. That route is a placeholder (`RoomPlaceholderPage`) that shows the invite link with a copy button until the focus room arrives. `features/home/LiveRooms.tsx` loads pages with `useInfiniteQuery` keyed by filter, `q` and `?subject=` (a card's subject tag sets it). `features/rooms/timerText.ts` works out a card's "N min left" from `endsAt`, and the cards redraw every 30 seconds. `components/ui/Modal.tsx` is the shared dialog: Escape and backdrop close it, Tab stays inside, and focus returns to the opener.
+- **Member counts** come from the in-memory presence store (`realtime/presence.ts`), one per person however many tabs they have open. "Has space" leaves out `fullRoomIds()` in the database query, so paging stays correct. A private room is also visible (`GET /:id`) to the people currently in it.
+- **Web:** `roomsApi` in `lib/api.ts`. `features/rooms/CreateRoomDialog.tsx` (rendered by Home while `?create=1` is set, starting from your timer defaults) creates the room and opens `/room/:id`. In `mode="settings"` the same dialog is the host's Room settings (see Room settings below). `features/home/LiveRooms.tsx` loads pages with `useInfiniteQuery` keyed by filter, `q` and `?subject=` (a card's subject tag sets it). `features/rooms/timerText.ts` works out a card's "N min left" from `endsAt`, and the cards redraw every 30 seconds. `components/ui/Modal.tsx` is the shared dialog: Escape and backdrop close it, Tab stays inside, and focus returns to the opener.
 
 ## Timer: the server owns it
 
-A room stores `timer { phase, round, endsAt, pausedRemaining }`. `phase` is `focus`, `shortBreak` or `longBreak`.
+A room stores `timer { phase, round, endsAt, pausedRemaining }`. `phase` is `idle` (not started), `focus`, `shortBreak`, `longBreak` or `done` (every round finished).
 
 - **Running:** `endsAt` is a timestamp, and `pausedRemaining` is null. Each client shows `endsAt - now` and redraws locally, so the timer never drifts and a late joiner sees the right time at once.
 - **Paused:** `endsAt` is null, and `pausedRemaining` holds the milliseconds left. Resuming sets `endsAt = now + pausedRemaining`.
-- **Commands:** only the host can send `timer:start`, `timer:pause`, `timer:skip` or `timer:reset`. The server checks this on every call, updates the room and broadcasts `timer:state`.
-- **Phase changes:** the server schedules a timeout for `endsAt`. When it fires, the server works out the next phase and round from `timerSettings`, logs the session after the last round, and either starts the next phase (if `autoStart` is on) or waits for the host. After a restart, the server reschedules from the stored `endsAt`.
-- The phase and round maths live in pure functions (`realtime/timer.ts`) with unit tests.
+- **Idle and done:** both are null. `idle` is round 1; `done` keeps `round = totalRounds`.
+- **Rules** (`realtime/timer.ts`, each a pure `(state, settings, now) → state`):
+  - `start` works from `idle` or `done` ("Start again") and runs focus round 1.
+  - `pause` works only while running, and `resume` only while paused.
+  - `reset` goes back to `idle` from anywhere.
+  - `skip` ends the current focus or break now. A running timer moves on as if the phase had ended. A paused one stays paused, at the full length of the next phase.
+  - Invalid commands throw `409 INVALID_TIMER_COMMAND`.
+- **Phase order:** after focus round `r`, the timer is `done` if `r` is the last round (no break after it). Otherwise it goes to a `longBreak` if `r % roundsBeforeLong === 0`, else a `shortBreak`, with the round unchanged. After a break comes focus round `r + 1`. With `autoStart` off, the next phase waits paused at full length for the host.
+- **Commands:** only the host can send `timer:start`, `timer:pause`, `timer:skip` or `timer:reset`. `timer:start` is the mockup's one Start/Pause button: it starts from `idle` or `done` and resumes when paused. The timer handlers check membership and that the sender is the current host (from presence) on every call, then `realtime/roomTimer.ts` loads the room, applies the engine, saves `timer` to MongoDB and broadcasts `timer:state { roomId, timer, serverNow }`.
+- **Phase changes:** `createRoomTimer()` (`realtime/roomTimer.ts`) keeps one `setTimeout` per running room, for its `endsAt`, replaced on every change and cancelled when the timer stops. When it fires, `advanceSteps` works out each phase that ended (normally one) from `timerSettings`, and the next phase either starts at once (if `autoStart` is on) or waits for the host. It times the next phase from the previous `endsAt`, not from now, so a late timeout doesn't drift. An early or stale timeout changes nothing. The server will log the session after the last round (Phase 3).
+- **One at a time per room:** commands and timeouts for the same room run through a per-room lock (`lib/keyedLock.ts`), so their load → save never interleave. In memory, like presence: one server process in v1.
+- **Restarts:** timers live in MongoDB, so on the first database connection `restore()` reschedules every open room whose timer is running. A timer that ended while the server was down fires at once and catches up through every phase it missed.
+- **Statuses follow the phase:** when the phase changes, every member who isn't Away becomes Focusing (focus) or Break (anything else), with `focusingSince` set to when the phase began, and the room gets `presence:update`. Pausing doesn't change anyone's status.
+- **Focus credit:** when a focus phase ends (on its own or skipped), each member who is Focusing is credited `min(focus time actually run, phase end − focusingSince)` (`presence.focusCredits`), so late joiners get part of it and Away members get nothing. Credits add up in the room's internal `run { startedAt, focus: [{ userId, focusedMs }] }` (never serialised); `timer:start` from `idle` or `done` begins a fresh run. Phase 3 turns it into a session log.
+- **Client clock:** `room:join` and `timer:state` both carry `serverNow`. `useRoomTimer(roomId, { timer, serverNow })` (`apps/web/src/features/room/useRoomTimer.ts`) keeps `clockOffset = serverNow − Date.now()` and, while running, recomputes `endsAt − (Date.now() + clockOffset)` (`roomClock.ts`) every animation frame, re-rendering only when the shown second changes. It never counts down on its own.
+- The phase and round maths live in pure functions (`realtime/timer.ts`) with unit tests (`timer.test.ts`, fake clock).
 
 ## Room lifecycle
 
 ```
-open ──last member leaves──▶ empty (emptySince = now) ──5 min, nobody back──▶ closed (deleted)
+open ──last socket leaves──▶ empty (emptySince = now) ──5 min, nobody back──▶ closed (closedAt = now)
   ▲                               │
   └────────someone joins──────────┘  (emptySince = null)
 ```
 
-- **Open:** at least one member is connected. At most `MAX_ROOM_SIZE` (20) members. If the host leaves, the host role passes to the member who has been there longest.
-- **Empty:** the last socket left or disconnected. `emptySince` is set, but the room and its timer stay as they are, so a refresh or dropped connection doesn't end it.
+- **Presence** (`realtime/presence.ts`) is in memory, keyed by room and then user, with every socket (tab) each user has there. It holds each member's profile, `joinedAt`, status, "working on" note and `focusingSince`, plus the room's `maxSize` and current host. It has no timers and no database; the room handlers (`realtime/handlers/room.handlers.ts`) drive it and broadcast `presence:update` on every change.
+- **Joining:** `room:join` checks the room exists and isn't closed, that you may join (public; private with the invite code; or you're the host or already in it), and that it has space. Seats are counted by person: a second tab of someone already in never counts. The check and the add run with no `await` between them, so two people can't take the last seat together. A newcomer's status follows the timer phase (focus → Focusing, breaks → Break).
+- **Leaving vs disconnecting:** `room:leave` removes you at once (once all your tabs in that room have left). A disconnect is not a leave: when your last socket drops you keep your place, your `joinedAt` and your status for `RECONNECT_GRACE_MS` (30 seconds), and only then are you removed and the room told. A rejoin inside that window cancels the removal.
+- **Host handover:** when the host leaves for good (leave, or their reconnect window runs out), the member who has been there longest becomes host, in presence and in the database (`hostId`), and `presence:update` carries the new `isHost`.
+- **Open:** at least one member is in the room. At most `maxSize` (2 to 20) people.
+- **Empty:** the last socket left or disconnected. `emptySince` is set straight away, but the room and its timer stay as they are, so a refresh or dropped connection doesn't end it.
 - **Grace:** `ROOM_GRACE_MS` (5 minutes). Anyone who joins in that time clears `emptySince` and the room carries on.
-- **Closed:** `jobs/roomCleanup.ts` runs every minute and deletes rooms whose `emptySince` is older than the grace period, together with their messages and resources (and stored files). Sessions stay in each person's history. The host can also close a room straight away. Invite links to a closed room show the Room closed page.
+- **Closed:** `jobs/roomCleanup.ts` runs every 30 seconds and closes rooms whose `emptySince` is older than the grace period and that have nobody in presence (someone inside a reconnect window still counts): it sets `closedAt`, empties the goals and deletes their messages and resources (and, once uploads exist, stored files). The room document stays so invite links can show the Room closed page. Sessions stay in each person's history. The host can also close a room straight away. Because presence is lost on a restart, the job first gives every open room with `emptySince: null` a fresh grace period.
+
+- **Room settings:** the host's Room settings dialog sends `room:settings` (the Create a room fields plus `roomId`). The handler checks the socket is in the room and the sender is the current host, then `updateRoomSettings` refuses a `maxSize` below the people already in the room (`ROOM_TOO_SMALL`), saves the rest and merges goals by text (a goal that stays keeps its id, tick and author; new ones are added by the host). Presence takes the new `maxSize`, and the room gets `room:update` (plus `goal:update` when the goals changed). A running phase keeps its `endsAt`; the timer reads the settings again when the phase ends, so timer changes apply from the next phase.
+- **Removal:** a removed member's sockets get `room:removed { roomId }` on `user:<id>`. The client shows "You were removed" and doesn't rejoin. The server sends it once `member:remove` is built (Phase 4).
 
 Room lifecycle and permissions have unit tests.
+
+## Invite links (web, `features/invite/`)
+
+`/r/:inviteCode` (`InvitePage.tsx`) works signed in or out and has no sidebar; it shares the `.solo` layout (`components/layout/SoloScreen.tsx`) with the room state screens.
+
+- A code that doesn't match `INVITE_CODE_PATTERN` shows "We couldn't find that room" without a request, as does a 404.
+- **Open room, signed in:** straight to `/room/:id?invite=<code>` (onboarding first, through `RequireOnboarded`, if it isn't finished).
+- **Open room, signed out:** the preview (mockup `#invite`). Sign up to join and Log in go to `/signup` or `/login` with `?next=/r/<code>`, so after signing up (and onboarding) you come back here and go into the room; a room that closed in the meantime shows Room closed instead. The Sign up / Log in switch links keep `?next=`. The preview is fetched again every 30 seconds, and just after the current phase ends (`invitePreview.ts › refetchDelay`); the time left is worked out from `endsAt` every second.
+- **Closed room:** Room closed (mockup `#closed`) with a Follow button for the host (sign up first when signed out; hidden when you were the host) and links to live rooms and Create a room.
+
+## Focus room (web, `features/room/`)
+
+`/room/:roomId` (`RoomPage.tsx`) has no sidebar. `?invite=<code>` carries a private room's invite code for people who aren't its host.
+
+- **Joining:** `useRoomSession` emits `room:join` as soon as the socket is connected and again on every `connect` (Socket.IO doesn't rejoin rooms after a reconnect). A pure reducer (`roomSession.ts`) holds the state: `joining`, `joined`, `rejoining` (connection dropped, room still on screen under a banner), `full`, `closed`, `notFound`, `removed` or `error`. It follows `presence:update`, `room:update`, `goal:update` and `room:removed`. Each successful join makes a new timer snapshot and message list, which `useRoomTimer` and `useRoomChat` take as a fresh start. Leaving the page (Leave, the back arrow or any link) sends `room:leave`; a refresh or closed tab is a disconnect, with the server's 30-second window. The session summary on Leave arrives with Phase 3.
+- **Host:** taken from presence (`isHost` on your member), so a hand-over shows at once. Only the host sees the timer controls and Settings; everyone else sees who controls the timer.
+- **Timer:** `timerView.ts` turns the server timer and the time left into what the ring shows (phase, clock, round, dots). The tab title shows the time left while a phase runs. `useTimerSounds` plays Web Audio sounds (`chime.ts`) for everyone in the room: three quick rising notes when the host starts a run (from idle or done), and a soft two-note chime when a focus round or break ends. One mute switch covers both, saved in localStorage as `sb-sound`.
+- **Side panel:** Chat, Goals, People and Files as an ARIA tablist; every pane stays mounted so the chat keeps its draft. Below 1100px it is a drawer opened from the dock, which counts unread chat messages. Goals and Files are read-only until Phase 3.

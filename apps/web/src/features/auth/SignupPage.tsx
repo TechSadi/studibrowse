@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { signupSchema } from '@studibrowse/shared';
 import { Button } from '../../components/ui/Button';
 import { CheckLine } from '../../components/ui/CheckLine';
@@ -37,6 +37,8 @@ function usernameHint(username: string, check: UsernameAvailability): { text: st
 
 export function SignupPage() {
   const { signIn } = useAuth();
+  // Keep ?next= (e.g. from an invite link) when switching between Sign up and Log in.
+  const { search } = useLocation();
   const form = useAuthForm({
     formId: 'signup',
     schema: signupSchema,
@@ -122,7 +124,7 @@ export function SignupPage() {
         </Button>
         <p className={styles.footNote}>
           Already have an account?{' '}
-          <Link className="text-link" to="/login">
+          <Link className="text-link" to={{ pathname: '/login', search }}>
             Log in
           </Link>
         </p>

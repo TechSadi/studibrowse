@@ -1,13 +1,16 @@
 import type { Types } from 'mongoose';
-import type {
-  AvatarColor,
-  InvitePreview,
-  RoomDetail,
-  RoomHost,
-  RoomSummary,
-  RoomTimer,
-  TimerPhase,
-  TimerSettings,
+import {
+  initialsOf,
+  type AvatarColor,
+  type ClosedRoomPreview,
+  type InvitePreview,
+  type RoomDetail,
+  type RoomGoal,
+  type RoomHost,
+  type RoomSummary,
+  type RoomTimer,
+  type TimerPhase,
+  type TimerSettings,
 } from '@studibrowse/shared';
 
 /** A room as `.lean()`, `toObject()` or an aggregation returns it. */
@@ -48,7 +51,7 @@ function toRoomHost(host: HostRecord): RoomHost {
   };
 }
 
-function toRoomTimer(timer: RoomRecord['timer']): RoomTimer {
+export function toRoomTimer(timer: RoomRecord['timer']): RoomTimer {
   return {
     phase: timer.phase as TimerPhase,
     round: timer.round,
@@ -87,6 +90,10 @@ export function toRoomSummary(
   };
 }
 
+export function toRoomGoal(goal: RoomRecord['goals'][number]): RoomGoal {
+  return { id: goal._id.toString(), text: goal.text, done: goal.done, addedBy: goal.addedBy.toString() };
+}
+
 /** The room for someone allowed to see it. `viewerId` decides isHost and whether a private room's code is shown. */
 export function toRoomDetail(
   room: RoomRecord,
@@ -98,12 +105,7 @@ export function toRoomDetail(
   return {
     ...summary,
     description: room.description,
-    goals: room.goals.map((goal) => ({
-      id: goal._id.toString(),
-      text: goal.text,
-      done: goal.done,
-      addedBy: goal.addedBy.toString(),
-    })),
+    goals: room.goals.map(toRoomGoal),
     inviteCode: isHost || room.isPublic ? room.inviteCode : null,
     isHost,
     totalSessions: room.totalSessions,
@@ -112,16 +114,35 @@ export function toRoomDetail(
   };
 }
 
-/** What an invite link shows, possibly to someone signed out. */
-export function toInvitePreview(room: RoomRecord, host: HostRecord, memberCount: number): InvitePreview {
+/** What an invite link shows, possibly to someone signed out. People in the room appear as initials only. */
+export function toInvitePreview(
+  room: RoomRecord,
+  host: HostRecord,
+  { memberCount, members }: { memberCount: number; members: { name: string; avatarColor: string }[] },
+): InvitePreview {
   return {
+    id: room._id.toString(),
     name: room.name,
     subject: room.subject,
+    description: room.description,
     host: toRoomHost(host),
     memberCount,
+    members: members.map((member) => ({
+      initials: initialsOf(member.name),
+      avatarColor: member.avatarColor as AvatarColor,
+    })),
     maxSize: room.maxSize,
     timer: toRoomTimer(room.timer),
     timerSettings: toTimerSettings(room.timerSettings),
     goals: room.goals.map((goal) => ({ text: goal.text, done: goal.done })),
   };
+}
+
+/** What an invite link to a closed room shows: the room's name and who to follow. */
+export function toClosedRoomPreview(
+  room: RoomRecord,
+  host: HostRecord,
+  roomsPerWeek: number,
+): ClosedRoomPreview {
+  return { name: room.name, host: toRoomHost(host), roomsPerWeek };
 }

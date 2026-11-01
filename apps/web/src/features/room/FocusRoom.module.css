@@ -1,0 +1,56 @@
+/* .room-view, .stage and .timer-zone in the mockup: a full-height stage with one docked side panel. */
+.view {
+  height: calc(100vh - 64px - env(safe-area-inset-top, 0px));
+  height: calc(100dvh - 64px - env(safe-area-inset-top, 0px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+}
+
+.stage {
+  overflow-y: auto;
+  position: relative;
+  isolation: isolate;
+}
+
+.stage::before {
+  content: '';
+  position: fixed;
+  inset: 64px 400px 0 0;
+  z-index: -1;
+  background: var(--stage-glow);
+  pointer-events: none;
+}
+
+.inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px max(28px, env(safe-area-inset-left, 0px)) 120px;
+}
+
+.timerZone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 44px 0 36px;
+}
+
+@media (max-width: 1100px) {
+  .view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stage::before {
+    inset: 64px 0 0 0;
+  }
+}
+
+@media (max-width: 680px) {
+  .inner {
+    padding: 18px max(16px, env(safe-area-inset-right, 0px)) 120px max(16px, env(safe-area-inset-left, 0px));
+  }
+
+  .timerZone {
+    padding: 28px 0 24px;
+  }
+}

@@ -43,15 +43,33 @@ export interface PhaseView {
   tone: PhaseTone;
 }
 
-function phaseMins(timer: RoomTimer, settings: TimerSettings): number {
-  if (timer.phase === 'shortBreak') return settings.shortBreakMins;
-  if (timer.phase === 'longBreak') return settings.longBreakMins;
+function phaseMins(phase: 'focus' | 'shortBreak' | 'longBreak', settings: TimerSettings): number {
+  if (phase === 'shortBreak') return settings.shortBreakMins;
+  if (phase === 'longBreak') return settings.longBreakMins;
   return settings.focusMins;
 }
 
 /** What a room card says about the shared timer. The time left is worked out from `endsAt`, never ticked. */
 export function phaseView(timer: RoomTimer, settings: TimerSettings, now: number): PhaseView {
-  const phaseMs = phaseMins(timer, settings) * 60_000;
+  if (timer.phase === 'idle') {
+    return {
+      title: 'Waiting to start',
+      detail: `${settings.totalRounds} × ${settings.focusMins} min focus rounds`,
+      remaining: 1,
+      tone: 'idle',
+    };
+  }
+  if (timer.phase === 'done') {
+    // The mockup draws a finished run as a full ring.
+    return {
+      title: 'Session complete',
+      detail: `${settings.totalRounds} rounds finished`,
+      remaining: 1,
+      tone: 'idle',
+    };
+  }
+
+  const phaseMs = phaseMins(timer.phase, settings) * 60_000;
   const leftMs = timer.endsAt
     ? Math.max(0, Date.parse(timer.endsAt) - now)
     : (timer.pausedRemaining ?? phaseMs);
@@ -61,15 +79,6 @@ export function phaseView(timer: RoomTimer, settings: TimerSettings, now: number
   const onBreak = timer.phase !== 'focus';
 
   if (!timer.endsAt) {
-    const notStarted = timer.phase === 'focus' && timer.round === 1 && leftMs >= phaseMs;
-    if (notStarted) {
-      return {
-        title: 'Waiting to start',
-        detail: `${settings.totalRounds} × ${settings.focusMins} min focus rounds`,
-        remaining: 1,
-        tone: 'idle',
-      };
-    }
     return {
       title: `Paused · ${onBreak ? 'break' : 'round'} ${rounds}`,
       detail: `${leftMins} min left`,

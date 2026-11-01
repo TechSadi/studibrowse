@@ -1,0 +1,158 @@
+/* .people-head, .people, .person (stage) and .prow (side panel) in the mockup. */
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.head h2 {
+  font-size: 18px;
+}
+
+.head span {
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.person {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+
+/* The status ring around the avatar. */
+.person > :first-child,
+.person.away > :first-child {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--away);
+}
+
+.person.focusing > :first-child {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent);
+}
+
+.person.break > :first-child {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--violet);
+}
+
+.grow {
+  min-width: 0;
+  flex: 1;
+}
+
+.person b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.working {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person small,
+.row small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.crown {
+  color: var(--amber);
+  width: 14px;
+  height: 14px;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.row:first-child {
+  border-top: 0;
+}
+
+.row b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14.5px;
+}
+
+.row small {
+  display: flex;
+  align-items: center;
+}
+
+.you {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.sdot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--away);
+}
+
+.sdot.focusing {
+  background: var(--accent);
+}
+
+.sdot.break {
+  background: var(--violet);
+}
+
+.sdot.away {
+  background: var(--away);
+}
+
+@media (max-width: 680px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

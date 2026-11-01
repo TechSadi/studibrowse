@@ -57,6 +57,12 @@
   --glow-mint: 127 209 178;
   --glow-accent: 76 191 152;
   --glow-amber: 224 169 90;
+  /* Focus room: the halo behind the timer ring, and the stage's soft background light. */
+  --ring-glow: 0 0 80px -10px rgba(76, 191, 152, 0.35);
+  --ring-glow-break: 0 0 80px -10px rgba(124, 183, 255, 0.35);
+  --stage-glow:
+    radial-gradient(640px 420px at 50% 40%, rgba(76, 191, 152, 0.1), transparent 65%),
+    radial-gradient(520px 360px at 10% 100%, rgba(124, 183, 255, 0.1), transparent 60%);
   --shadow-primary: 0 8px 24px -10px rgba(76, 191, 152, 0.7);
   --shadow-shot: 0 40px 80px -30px rgba(0, 0, 0, 0.8);
   /* Google's "G" on the Continue with Google button (same in both themes). */
@@ -108,6 +114,9 @@
   --scrim: rgba(18, 26, 23, 0.38);
   --dot: rgba(18, 26, 23, 0.12);
   --shadow-primary: 0 8px 20px -10px rgba(29, 107, 87, 0.55);
+  /* The mockup's light theme uses one softer green halo for every phase. */
+  --ring-glow: 0 0 70px -14px rgba(29, 107, 87, 0.25);
+  --ring-glow-break: var(--ring-glow);
 
   color-scheme: light;
 }

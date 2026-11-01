@@ -105,8 +105,8 @@ export interface TimerSettings extends TimerDefaults {
 }
 
 /**
- * The server-owned timer. Running: `endsAt` is set and `pausedRemaining` is null. Paused (or not started yet):
- * `endsAt` is null and `pausedRemaining` holds the milliseconds left.
+ * The server-owned timer. Running: `endsAt` is set and `pausedRemaining` is null. Paused (or waiting for the host
+ * between phases): `endsAt` is null and `pausedRemaining` holds the milliseconds left. `idle` and `done`: both null.
  */
 export interface RoomTimer {
   phase: TimerPhase;
@@ -158,16 +158,38 @@ export interface RoomDetail extends Omit<RoomSummary, 'hostFollowed'> {
   createdAt: string;
 }
 
-/** What an invite link shows before you join. No ids or codes beyond what the link already holds. */
+/** Someone in the room, as an invite shows them to a possibly signed-out visitor: initials only. */
+export interface InvitePreviewMember {
+  initials: string;
+  avatarColor: AvatarColor;
+}
+
+/**
+ * What an invite link shows before you join. The room id is included so a signed-in visitor can be sent into
+ * the room; it grants nothing the code doesn't already (a private room still needs the code to join).
+ */
 export interface InvitePreview {
+  id: string;
   name: string;
   subject: string;
+  /** Empty when the host didn't set one. */
+  description: string;
   host: RoomHost;
   memberCount: number;
+  /** The first few people in the room, longest present first. */
+  members: InvitePreviewMember[];
   maxSize: number;
   timer: RoomTimer;
   timerSettings: TimerSettings;
   goals: { text: string; done: boolean }[];
+}
+
+/** What an invite link to a closed room shows: enough to follow the host. */
+export interface ClosedRoomPreview {
+  name: string;
+  host: RoomHost;
+  /** Rooms the host opened per week, averaged over the last 4 weeks and rounded. */
+  roomsPerWeek: number;
 }
 
 export interface RoomResponse {
@@ -182,6 +204,6 @@ export interface PublicRoomsResponse {
   nextPage: number | null;
 }
 
-export interface InvitePreviewResponse {
-  room: InvitePreview;
-}
+/** A closed room is a normal answer for an invite link, not an error. An unknown code is a 404. */
+export type InvitePreviewResponse =
+  { status: 'open'; room: InvitePreview } | { status: 'closed'; room: ClosedRoomPreview };

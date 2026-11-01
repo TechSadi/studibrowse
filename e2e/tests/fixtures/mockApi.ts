@@ -3,6 +3,7 @@ import type {
   ApiErrorBody,
   AuthResponse,
   FollowedUser,
+  InvitePreviewResponse,
   PublicUser,
   RoomDetail,
   RoomSummary,
@@ -58,7 +59,7 @@ export function makeRoom(host: PublicUser, overrides: Partial<RoomDetail> = {}):
     isPublic: true,
     maxSize: 20,
     memberCount: 0,
-    timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+    timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
     timerSettings: { ...host.timerDefaults, autoStart: true },
     goals: [],
     inviteCode: 'aB3xK9_q-2',
@@ -75,6 +76,8 @@ export class MockApi {
   /** Newest first, like the server's list. */
   rooms: RoomDetail[] = [];
   sessionUserId: string | null = null;
+  /** Invite previews by code: GET /api/rooms/invite/:code answers 404 for any other code. */
+  invites: Record<string, InvitePreviewResponse> = {};
   /** Request bodies by endpoint, e.g. calls.login[0]. */
   calls: Record<string, unknown[]> = {};
 
@@ -229,6 +232,13 @@ export class MockApi {
         return { status: 201, json: { room } };
       }
       default: {
+        const inviteCode = url.pathname.match(/^\/api\/rooms\/invite\/([^/]+)$/)?.[1];
+        if (inviteCode && method === 'GET') {
+          const invite = this.invites[inviteCode];
+          return invite
+            ? { status: 200, json: invite }
+            : error(404, 'ROOM_NOT_FOUND', 'We couldn’t find that room. Check the link and try again.');
+        }
         const roomId = url.pathname.match(/^\/api\/rooms\/([^/]+)$/)?.[1];
         if (roomId && method === 'GET') {
           const room = this.rooms.find((r) => r.id === roomId);
@@ -267,6 +277,9 @@ export async function mockApi(page: Page): Promise<MockApi> {
   const api = new MockApi();
   // Keep tests offline: without Google's script the Google button falls back to its "unavailable" state.
   await page.route('https://accounts.google.com/**', (route) => route.abort());
+  // The real server runs for the room tests, and it would reject the mock's fake tokens and end the session.
+  // Keep sockets offline instead: the client just keeps trying to reconnect. (Polling comes before the upgrade.)
+  await page.route('**/socket.io/**', (route) => route.abort());
   await page.route('**/api/**', async (route: Route) => {
     const request = route.request();
     const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};

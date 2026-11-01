@@ -31,5 +31,5 @@ export const getById: RequestHandler<RoomIdParams, RoomResponse> = async (req, r
 };
 
 export const invitePreview: RequestHandler<InviteCodeParams, InvitePreviewResponse> = async (req, res) => {
-  res.json({ room: await roomsService.getInvitePreview(req.params.code) });
+  res.json(await roomsService.getInvitePreview(req.params.code));
 };

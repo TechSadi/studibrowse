@@ -1,21 +1,39 @@
 import { mongo, Types, type PipelineStage } from 'mongoose';
 import {
   PUBLIC_ROOMS_PAGE_SIZE,
+  RECENT_MESSAGES_LIMIT,
+  type AvatarColor,
   type CreateRoomData,
-  type InvitePreview,
+  type InvitePreviewResponse,
   type PublicRoomsQuery,
   type PublicRoomsResponse,
   type RoomDetail,
+  type RoomGoal,
+  type RoomJoinData,
+  type RoomSettingsUpdate,
 } from '@studibrowse/shared';
-import { countMembers, fullRoomIds } from '../../realtime/presence';
+import {
+  countMembers,
+  fullRoomIds,
+  isMember,
+  memberPreview,
+  type MemberProfile,
+} from '../../realtime/presence';
+import { idleTimer } from '../../realtime/timer';
 import { unauthenticated } from '../auth/auth.errors';
+import { toChatMessage, type MessageRecord } from '../chat/chat.serializer';
+import { Message } from '../chat/message.model';
+import { Resource } from '../resources/resource.model';
+import { toRoomResource, type ResourceRecord } from '../resources/resources.serializer';
 import { User } from '../users/user.model';
 import { generateInviteCode } from './inviteCode';
 import { Room } from './room.model';
-import { roomClosed, roomNotFound } from './rooms.errors';
+import { roomClosed, roomNotFound, roomTooSmall } from './rooms.errors';
 import {
+  toClosedRoomPreview,
   toInvitePreview,
   toRoomDetail,
+  toRoomGoal,
   toRoomSummary,
   type HostRecord,
   type RoomRecord,
@@ -39,13 +57,8 @@ export async function createRoom(userId: string, data: CreateRoomData): Promise<
         hostId: userId,
         inviteCode: generateInviteCode(),
         goals: goals.map((text) => ({ text, done: false, addedBy: userId })),
-        // Ready to start: paused at a full first focus round until the host presses Start.
-        timer: {
-          phase: 'focus',
-          round: 1,
-          endsAt: null,
-          pausedRemaining: data.timerSettings.focusMins * 60_000,
-        },
+        // Waits for the host to press Start.
+        timer: idleTimer(),
         // Nobody is connected until the host's socket joins the room.
         emptySince: new Date(),
       });
@@ -126,22 +139,47 @@ export async function listPublicRooms(userId: string, query: PublicRoomsQuery): 
   return { rooms, nextPage: rows.length > PUBLIC_ROOMS_PAGE_SIZE ? query.page + 1 : null };
 }
 
-/** A private room is visible only to its host for now; members will see it too once they can join. */
+/** A private room is visible to its host and to the people in it. */
 export async function getRoom(userId: string, roomId: string): Promise<RoomDetail> {
   const room = await Room.findById(roomId).lean<RoomRecord>();
   if (!room || room.closedAt) throw roomNotFound();
-  if (!room.isPublic && room.hostId.toString() !== userId) throw roomNotFound();
+  if (!room.isPublic && room.hostId.toString() !== userId && !isMember(roomId, userId)) throw roomNotFound();
   const host = await findHost(room);
   return toRoomDetail(room, host, { memberCount: countMembers(roomId), viewerId: userId });
 }
 
-/** Preview data for an invite link. Holding the code is what grants it, so private rooms preview too. */
-export async function getInvitePreview(code: string): Promise<InvitePreview> {
+/** How many people the invite preview's avatar stack shows before "+N". */
+export const INVITE_PREVIEW_MEMBERS = 4;
+
+const HOSTING_WINDOW_WEEKS = 4;
+
+/**
+ * Preview data for an invite link. Holding the code is what grants it, so private rooms preview too. A closed
+ * room still answers, with just enough for the Room closed page to offer following the host.
+ */
+export async function getInvitePreview(code: string, now = new Date()): Promise<InvitePreviewResponse> {
   const room = await Room.findOne({ inviteCode: code }).lean<RoomRecord>();
   if (!room) throw roomNotFound();
-  if (room.closedAt) throw roomClosed();
   const host = await findHost(room);
-  return toInvitePreview(room, host, countMembers(room._id.toString()));
+  if (room.closedAt) {
+    const roomsPerWeek = await hostRoomsPerWeek(room.hostId, now);
+    return { status: 'closed', room: toClosedRoomPreview(room, host, roomsPerWeek) };
+  }
+  const roomId = room._id.toString();
+  return {
+    status: 'open',
+    room: toInvitePreview(room, host, {
+      memberCount: countMembers(roomId),
+      members: memberPreview(roomId, INVITE_PREVIEW_MEMBERS),
+    }),
+  };
+}
+
+/** Rooms someone opened per week over the last 4 weeks, rounded ("Hosts about 3 rooms a week"). */
+export async function hostRoomsPerWeek(hostId: Types.ObjectId | string, now = new Date()): Promise<number> {
+  const since = new Date(now.getTime() - HOSTING_WINDOW_WEEKS * 7 * 24 * 60 * 60 * 1000);
+  const count = await Room.countDocuments({ hostId, createdAt: { $gt: since, $lte: now } });
+  return Math.round(count / HOSTING_WINDOW_WEEKS);
 }
 
 async function findHost(room: RoomRecord): Promise<HostRecord> {
@@ -149,4 +187,119 @@ async function findHost(room: RoomRecord): Promise<HostRecord> {
   // A room that outlived its host's account is treated as gone.
   if (!host) throw roomNotFound();
   return host;
+}
+
+export interface JoinableRoom {
+  room: RoomRecord;
+  host: HostRecord;
+}
+
+/**
+ * The room `userId` asked to join, if they may. A private room needs its invite code unless you're its host
+ * or already in it (another tab, or back inside the reconnect window). A wrong code gets the same answer as
+ * a missing room, so neither ids nor codes can be probed.
+ */
+export async function loadJoinableRoom(
+  userId: string,
+  roomId: string,
+  inviteCode?: string,
+): Promise<JoinableRoom> {
+  const room = await Room.findById(roomId).lean<RoomRecord>();
+  if (!room) throw roomNotFound();
+  if (room.closedAt) throw roomClosed();
+  const allowed =
+    room.isPublic ||
+    room.hostId.toString() === userId ||
+    isMember(roomId, userId) ||
+    inviteCode === room.inviteCode;
+  if (!allowed) throw roomNotFound();
+  return { room, host: await findHost(room) };
+}
+
+/** How someone appears in a room's People list. */
+export async function loadMemberProfile(userId: string): Promise<MemberProfile> {
+  const user = await User.findById(userId, HOST_FIELDS).lean<HostRecord>();
+  if (!user) throw unauthenticated();
+  return { name: user.name, username: user.username, avatarColor: user.avatarColor as AvatarColor };
+}
+
+/** Everything room:join answers with except the members (from presence) and the server's clock. */
+export async function getRoomSnapshot(
+  { room, host }: JoinableRoom,
+  viewerId: string,
+): Promise<Omit<RoomJoinData, 'members' | 'serverNow'>> {
+  const [resources, latest] = await Promise.all([
+    Resource.find({ roomId: room._id }).sort({ createdAt: 1, _id: 1 }).lean<ResourceRecord[]>(),
+    Message.find({ roomId: room._id })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_MESSAGES_LIMIT)
+      .lean<MessageRecord[]>(),
+  ]);
+  const roomId = room._id.toString();
+  return {
+    room: toRoomDetail(room, host, { memberCount: countMembers(roomId), viewerId }),
+    resources: resources.map(toRoomResource),
+    messages: latest.reverse().map(toChatMessage),
+  };
+}
+
+/** Someone is connected again, so the grace period is off. */
+export async function markRoomOccupied(roomId: string): Promise<void> {
+  await Room.updateOne({ _id: roomId }, { emptySince: null });
+}
+
+/** Nobody is connected: the cleanup job closes the room once the grace period passes. */
+export async function markRoomEmpty(roomId: string, now: Date): Promise<void> {
+  await Room.updateOne({ _id: roomId, closedAt: null }, { emptySince: now });
+}
+
+export async function setRoomHost(roomId: string, hostId: string): Promise<void> {
+  await Room.updateOne({ _id: roomId }, { hostId });
+}
+
+export interface RoomSettingsResult {
+  settings: RoomSettingsUpdate;
+  goals: RoomGoal[];
+  goalsChanged: boolean;
+}
+
+/**
+ * Saves the host's Room settings. Goals are matched by text, so a goal that stays keeps its id, its tick and
+ * who added it; new ones count as added by the host. A running phase keeps its `endsAt`: the timer reads the
+ * settings again when the phase ends, so timer changes apply from the next phase.
+ */
+export async function updateRoomSettings(
+  roomId: string,
+  hostId: string,
+  data: CreateRoomData,
+  memberCount: number,
+): Promise<RoomSettingsResult> {
+  if (data.maxSize < memberCount) throw roomTooSmall(memberCount);
+  const room = await Room.findById(roomId).lean<RoomRecord>();
+  if (!room) throw roomNotFound();
+  if (room.closedAt) throw roomClosed();
+
+  const existing = new Map(room.goals.map((goal) => [goal.text, goal]));
+  const goals = [...new Set(data.goals)].map(
+    (text) =>
+      existing.get(text) ?? {
+        _id: new Types.ObjectId(),
+        text,
+        done: false,
+        addedBy: new Types.ObjectId(hostId),
+      },
+  );
+  const goalsChanged =
+    goals.length !== room.goals.length || goals.some((goal, i) => !goal._id.equals(room.goals[i]!._id));
+
+  const settings: RoomSettingsUpdate = {
+    name: data.name,
+    subject: data.subject,
+    description: data.description,
+    isPublic: data.isPublic,
+    maxSize: data.maxSize,
+    timerSettings: data.timerSettings,
+  };
+  await Room.updateOne({ _id: roomId, closedAt: null }, { ...settings, goals });
+  return { settings, goals: goals.map(toRoomGoal), goalsChanged };
 }

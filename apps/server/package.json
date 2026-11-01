@@ -8,7 +8,8 @@
     "build": "tsup",
     "start": "node --env-file-if-exists=../../.env dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e:server": "tsx src/test/e2eServer.ts"
   },
   "dependencies": {
     "@studibrowse/shared": "workspace:*",
@@ -37,6 +38,7 @@
     "@types/supertest": "^7.2.1",
     "mongodb-memory-server": "^11.3.0",
     "pino-pretty": "^13.2.0",
+    "socket.io-client": "^4.8.4",
     "supertest": "^7.3.1",
     "tsup": "^9.0.0",
     "tsx": "^4.23.15"
