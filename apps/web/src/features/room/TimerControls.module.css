@@ -1,0 +1,42 @@
+/* .controls and .member-note in the mockup. */
+.controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.controls > * {
+  min-width: 120px;
+}
+
+.memberNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  font-size: 14px;
+  color: var(--muted);
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.crown {
+  width: 16px;
+  height: 16px;
+  color: var(--amber);
+}
+
+@media (max-width: 680px) {
+  .controls {
+    width: 100%;
+  }
+
+  .controls > * {
+    min-width: 0;
+    flex: 1;
+  }
+}

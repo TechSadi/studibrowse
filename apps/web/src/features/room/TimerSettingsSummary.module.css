@@ -1,0 +1,16 @@
+/* .timer-meta in the mockup. */
+.meta {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 28px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.meta b {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-weight: 500;
+}

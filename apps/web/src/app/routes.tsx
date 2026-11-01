@@ -7,7 +7,7 @@ import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { SignupPage } from '../features/auth/SignupPage';
 import { HomePage } from '../features/home/HomePage';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
-import { RoomPlaceholderPage } from '../features/rooms/RoomPlaceholderPage';
+import { RoomPage } from '../features/room/RoomPage';
 import { WelcomePage } from '../features/welcome/WelcomePage';
 import { NotFoundPage } from './NotFoundPage';
 import { InvitePage, NotificationsPage, ProfilePage, ProgressPage, SettingsPage } from './placeholderPages';
@@ -48,7 +48,7 @@ export const routes: RouteObject[] = [
             ],
           },
           // The focus room is distraction-free: no sidebar.
-          { path: '/room/:roomId', element: <RoomPlaceholderPage /> },
+          { path: '/room/:roomId', element: <RoomPage /> },
         ],
       },
     ],

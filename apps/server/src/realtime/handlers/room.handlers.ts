@@ -1,6 +1,6 @@
 import { RECONNECT_GRACE_MS, type MemberStatus } from '@studibrowse/shared';
 import { logger } from '../../lib/logger';
-import { notAMember, roomFull } from '../../modules/rooms/rooms.errors';
+import { notAMember, notHost, roomFull } from '../../modules/rooms/rooms.errors';
 import {
   getRoomSnapshot,
   loadJoinableRoom,
@@ -141,6 +141,12 @@ export function createRoomHandlers({
 
 export function requireSocketInRoom(roomId: string, socket: TypedSocket): void {
   if (!isSocketInRoom(roomId, socket.id)) throw notAMember();
+}
+
+/** This socket joined the room and its user is the room's current host. Checked on every host command. */
+export function requireHost(roomId: string, userId: string, socket: TypedSocket, message?: string): void {
+  requireSocketInRoom(roomId, socket);
+  if (getHostId(roomId) !== userId) throw notHost(message);
 }
 
 /** Where a newcomer's status starts. The timer moves it on from there. */

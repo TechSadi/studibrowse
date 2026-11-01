@@ -8,6 +8,7 @@ import {
   hostTransferSchema,
   resourceAddSchema,
   roomJoinSchema,
+  roomSettingsUpdateSchema,
   statusSetSchema,
   type AckData,
   type AckEventName,
@@ -31,6 +32,7 @@ describe('clientEventSchemas', () => {
         'resource:add',
         'room:join',
         'room:leave',
+        'room:settings',
         'status:set',
         'timer:pause',
         'timer:reset',
@@ -145,5 +147,32 @@ describe('resourceAddSchema', () => {
     expect(resourceAddSchema.safeParse({ ...link, url: 'not a url' }).success).toBe(false);
     const long = `https://example.com/${'a'.repeat(RESOURCE_URL_MAX)}`;
     expect(resourceAddSchema.safeParse({ ...link, url: long }).success).toBe(false);
+  });
+});
+
+describe('room:settings', () => {
+  const settings = {
+    roomId,
+    name: '  Finals week focus ',
+    isPublic: true,
+    maxSize: 12,
+    timerSettings: {
+      focusMins: 25,
+      shortBreakMins: 5,
+      longBreakMins: 15,
+      roundsBeforeLong: 4,
+      totalRounds: 4,
+      autoStart: true,
+    },
+  };
+
+  it('takes the Create a room fields plus the room id', () => {
+    const parsed = roomSettingsUpdateSchema.parse(settings);
+    expect(parsed).toMatchObject({ roomId, name: 'Finals week focus', subject: '', goals: [] });
+  });
+
+  it('rejects fields the host may not set', () => {
+    expect(roomSettingsUpdateSchema.safeParse({ ...settings, hostId: userId }).success).toBe(false);
+    expect(roomSettingsUpdateSchema.safeParse({ ...settings, roomId: 'nope' }).success).toBe(false);
   });
 });

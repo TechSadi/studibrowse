@@ -3,6 +3,7 @@ import type {
   AvatarColor,
   InvitePreview,
   RoomDetail,
+  RoomGoal,
   RoomHost,
   RoomSummary,
   RoomTimer,
@@ -87,6 +88,10 @@ export function toRoomSummary(
   };
 }
 
+export function toRoomGoal(goal: RoomRecord['goals'][number]): RoomGoal {
+  return { id: goal._id.toString(), text: goal.text, done: goal.done, addedBy: goal.addedBy.toString() };
+}
+
 /** The room for someone allowed to see it. `viewerId` decides isHost and whether a private room's code is shown. */
 export function toRoomDetail(
   room: RoomRecord,
@@ -98,12 +103,7 @@ export function toRoomDetail(
   return {
     ...summary,
     description: room.description,
-    goals: room.goals.map((goal) => ({
-      id: goal._id.toString(),
-      text: goal.text,
-      done: goal.done,
-      addedBy: goal.addedBy.toString(),
-    })),
+    goals: room.goals.map(toRoomGoal),
     inviteCode: isHost || room.isPublic ? room.inviteCode : null,
     isHost,
     totalSessions: room.totalSessions,

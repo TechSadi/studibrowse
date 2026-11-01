@@ -1,0 +1,134 @@
+/* The shared timer (.phase-pill, .ring, .clock, .dots in the mockup). */
+.zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pill.break {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+
+.pill.done {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.pillDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.ring {
+  position: relative;
+  width: min(340px, 78vw);
+  aspect-ratio: 1;
+  margin: 24px 0 8px;
+  max-width: 100%;
+}
+
+.ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.track {
+  fill: none;
+  stroke: rgb(var(--wash) / 0.06);
+  stroke-width: 6;
+}
+
+.progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 1s linear,
+    stroke 0.3s;
+}
+
+.ring.break .progress {
+  stroke: var(--violet);
+}
+
+.ring::before {
+  content: '';
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  box-shadow: var(--ring-glow);
+  pointer-events: none;
+}
+
+.ring.break::before {
+  box-shadow: var(--ring-glow-break);
+}
+
+.center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.clock {
+  font-family: var(--mono);
+  font-size: clamp(52px, 9vw, 76px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.detail {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+.dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.dots i {
+  width: 22px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(var(--wash) / 0.12);
+}
+
+.dots i.dotDone {
+  background: var(--accent);
+}
+
+.dots i.dotNow {
+  background: linear-gradient(90deg, var(--accent) 50%, rgb(var(--wash) / 0.12) 50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress {
+    transition: none;
+  }
+}

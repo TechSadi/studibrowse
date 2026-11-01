@@ -1,9 +1,7 @@
-import { notHost } from '../../modules/rooms/rooms.errors';
 import { onEvent } from '../handler';
-import { getHostId } from '../presence';
 import type { RoomTimer, TimerCommand } from '../roomTimer';
-import type { HandlerRegistrar, TypedSocket } from '../types';
-import { requireSocketInRoom } from './room.handlers';
+import type { HandlerRegistrar } from '../types';
+import { requireHost } from './room.handlers';
 
 const COMMANDS = {
   'timer:start': 'start',
@@ -23,9 +21,4 @@ export function createTimerHandlers(roomTimer: RoomTimer): HandlerRegistrar {
       });
     }
   };
-}
-
-function requireHost(roomId: string, userId: string, socket: TypedSocket): void {
-  requireSocketInRoom(roomId, socket);
-  if (getHostId(roomId) !== userId) throw notHost();
 }

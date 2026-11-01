@@ -8,7 +8,9 @@ import {
   type PublicRoomsQuery,
   type PublicRoomsResponse,
   type RoomDetail,
+  type RoomGoal,
   type RoomJoinData,
+  type RoomSettingsUpdate,
 } from '@studibrowse/shared';
 import { countMembers, fullRoomIds, isMember, type MemberProfile } from '../../realtime/presence';
 import { idleTimer } from '../../realtime/timer';
@@ -20,10 +22,11 @@ import { toRoomResource, type ResourceRecord } from '../resources/resources.seri
 import { User } from '../users/user.model';
 import { generateInviteCode } from './inviteCode';
 import { Room } from './room.model';
-import { roomClosed, roomNotFound } from './rooms.errors';
+import { roomClosed, roomNotFound, roomTooSmall } from './rooms.errors';
 import {
   toInvitePreview,
   toRoomDetail,
+  toRoomGoal,
   toRoomSummary,
   type HostRecord,
   type RoomRecord,
@@ -220,4 +223,51 @@ export async function markRoomEmpty(roomId: string, now: Date): Promise<void> {
 
 export async function setRoomHost(roomId: string, hostId: string): Promise<void> {
   await Room.updateOne({ _id: roomId }, { hostId });
+}
+
+export interface RoomSettingsResult {
+  settings: RoomSettingsUpdate;
+  goals: RoomGoal[];
+  goalsChanged: boolean;
+}
+
+/**
+ * Saves the host's Room settings. Goals are matched by text, so a goal that stays keeps its id, its tick and
+ * who added it; new ones count as added by the host. A running phase keeps its `endsAt`: the timer reads the
+ * settings again when the phase ends, so timer changes apply from the next phase.
+ */
+export async function updateRoomSettings(
+  roomId: string,
+  hostId: string,
+  data: CreateRoomData,
+  memberCount: number,
+): Promise<RoomSettingsResult> {
+  if (data.maxSize < memberCount) throw roomTooSmall(memberCount);
+  const room = await Room.findById(roomId).lean<RoomRecord>();
+  if (!room) throw roomNotFound();
+  if (room.closedAt) throw roomClosed();
+
+  const existing = new Map(room.goals.map((goal) => [goal.text, goal]));
+  const goals = [...new Set(data.goals)].map(
+    (text) =>
+      existing.get(text) ?? {
+        _id: new Types.ObjectId(),
+        text,
+        done: false,
+        addedBy: new Types.ObjectId(hostId),
+      },
+  );
+  const goalsChanged =
+    goals.length !== room.goals.length || goals.some((goal, i) => !goal._id.equals(room.goals[i]!._id));
+
+  const settings: RoomSettingsUpdate = {
+    name: data.name,
+    subject: data.subject,
+    description: data.description,
+    isPublic: data.isPublic,
+    maxSize: data.maxSize,
+    timerSettings: data.timerSettings,
+  };
+  await Room.updateOne({ _id: roomId, closedAt: null }, { ...settings, goals });
+  return { settings, goals: goals.map(toRoomGoal), goalsChanged };
 }

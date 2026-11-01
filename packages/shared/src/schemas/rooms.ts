@@ -23,7 +23,7 @@ export const goalTextSchema = z
   .max(GOAL_TEXT_MAX, `Keep each goal to ${GOAL_TEXT_MAX} characters.`);
 
 /**
- * POST /api/rooms, and later the host's Room settings dialog (roomSettingsSchema).
+ * POST /api/rooms, and the host's Room settings dialog (roomSettingsSchema, sent as room:settings).
  * Strict, so the host, invite code and timer state can't be set from the client.
  */
 export const createRoomSchema = z.strictObject({

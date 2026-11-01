@@ -210,6 +210,12 @@ export function countMembers(roomId: string): number {
   return rooms.get(roomId)?.members.size ?? 0;
 }
 
+/** The host changed the room's size. Nobody already here loses their seat; the service checks that first. */
+export function setMaxSize(roomId: string, maxSize: number): void {
+  const room = rooms.get(roomId);
+  if (room) room.maxSize = maxSize;
+}
+
 /** Rooms with no space left, so the "Has space" filter can leave them out in the database query. */
 export function fullRoomIds(): string[] {
   return [...rooms].flatMap(([roomId, room]) => (room.members.size >= room.maxSize ? [roomId] : []));

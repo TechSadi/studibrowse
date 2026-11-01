@@ -32,6 +32,9 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 | --- | --- | --- | --- | --- |
 | `room:join` | client → server | `{ roomId, inviteCode? }`. `inviteCode` is the 10-character code from the invite link | Any signed-in user, while the room is open and has fewer than `maxSize` people (counted by person, not tab). A private room also needs `inviteCode`, unless you're its host or already in it | Ack data: `{ room, members, resources, messages, serverNow }`. `room` is the `RoomDetail` and already holds the timer and goals; `members` is longest present first; `messages` is the last 50, oldest first; `serverNow` is the server's clock in epoch ms, for the timer's clock offset. A newcomer's status follows the timer phase. Room gets `presence:update`. Errors: `ROOM_NOT_FOUND` (missing, or private without the right code), `ROOM_CLOSED`, `ROOM_FULL` |
 | `room:leave` | client → server | `{ roomId }` | Member (this socket joined the room). Error: `NOT_A_MEMBER` | Ack data: `{}`. Once all your tabs in the room have left, you're removed straight away and the room gets `presence:update`. If the room now has no sockets, the 5-minute grace starts |
+| `room:settings` | client → server | The Create a room fields (`createRoomSchema`) plus `roomId` | Host. Errors: `NOT_A_MEMBER`, `NOT_HOST`, `ROOM_TOO_SMALL` (`maxSize` below the people already in the room), `ROOM_CLOSED` | Ack data: `{}`. Saved, then the room gets `room:update`, and `goal:update` if the goals changed. Goals are matched by text, so one that stays keeps its tick. Timer changes apply from the next phase |
+| `room:update` | server → room | `{ roomId, settings: { name, subject, description, isPublic, maxSize, timerSettings } }` | Server only | n/a |
+| `room:removed` | server → `user:<id>` | `{ roomId }` | Server only. Sent to a member the host removed | n/a. The client shows "You were removed" and doesn't rejoin |
 | `presence:update` | server → room | `{ roomId, members: [{ userId, name, username, avatarColor, status, workingOn, isHost, joinedAt, focusingSince }] }` | Server only | n/a |
 | `status:set` | client → server | `{ roomId, status?: 'focusing' \| 'break' \| 'away', workingOn? }`. At least one of the two; `workingOn` is trimmed, up to 80 characters, and `''` clears it | Member (own status only). Error: `NOT_A_MEMBER` | Ack data: `{}`. Room gets `presence:update` |
 | `chat:send` | client → server | `{ roomId, text }`. `text` is trimmed, 1 to 1000 characters (`CHAT_TEXT_MAX`) | Member (`NOT_A_MEMBER` otherwise). 5 per 5 seconds per socket | Ack data: `{ message }`. Saved, then the whole room gets `chat:new`, sender included |
@@ -61,7 +64,7 @@ Rate limits are per socket (so per tab), in memory, and live in `apps/server/src
 
 ## Not covered by the spec yet
 
-These need a decision before Phase 2 or 4. Until then there is no event for them:
+These need a decision before Phase 4. Until then there is no event for them:
 
-- Editing room settings and closing the room (both host controls in the spec) have no event.
-- What a removed member's client receives (for example a `member:removed` event to that user) is not defined.
+- Closing the room straight away (a host control in the spec) has no event.
+- `room:removed` is defined and handled by the client, but nothing sends it until `member:remove` is built in Phase 4.

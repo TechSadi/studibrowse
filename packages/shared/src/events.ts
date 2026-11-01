@@ -10,8 +10,8 @@ import {
   RESOURCE_URL_MAX,
   WORKING_ON_MAX,
 } from './constants';
-import { goalTextSchema, objectIdSchema } from './schemas/rooms';
-import type { RoomDetail, RoomGoal, RoomTimer } from './types/api';
+import { goalTextSchema, objectIdSchema, roomSettingsSchema } from './schemas/rooms';
+import type { RoomDetail, RoomGoal, RoomTimer, TimerSettings } from './types/api';
 import type {
   AppNotification,
   ChatMessage,
@@ -55,6 +55,9 @@ export const roomJoinSchema = z.strictObject({
   inviteCode: z.string().regex(INVITE_CODE_PATTERN, 'That invite code is not valid.').optional(),
 });
 export const roomLeaveSchema = roomOnlySchema;
+
+/** The host's Room settings dialog: the Create a room fields, for a room that already exists. */
+export const roomSettingsUpdateSchema = roomSettingsSchema.extend({ roomId });
 
 export const statusSetSchema = z
   .strictObject({
@@ -137,9 +140,20 @@ export interface TimerStatePayload {
   serverNow: number;
 }
 
+/** Room settings everyone in the room shares, sent after the host saves them. */
+export interface RoomSettingsUpdate {
+  name: string;
+  subject: string;
+  description: string;
+  isPublic: boolean;
+  maxSize: number;
+  timerSettings: TimerSettings;
+}
+
 export interface ClientToServerEvents {
   'room:join': WithAck<typeof roomJoinSchema, RoomJoinData>;
   'room:leave': WithAck<typeof roomLeaveSchema, EmptyData>;
+  'room:settings': WithAck<typeof roomSettingsUpdateSchema, EmptyData>;
   'status:set': WithAck<typeof statusSetSchema, EmptyData>;
   'chat:send': WithAck<typeof chatSendSchema, { message: ChatMessage }>;
   /** No ack: typing indicators are best effort. */
@@ -157,6 +171,9 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+  'room:update': (payload: { roomId: string; settings: RoomSettingsUpdate }) => void;
+  /** To the removed person's own sockets (`user:<id>`). */
+  'room:removed': (payload: { roomId: string }) => void;
   'presence:update': (payload: { roomId: string; members: PresenceMember[] }) => void;
   'chat:new': (payload: { message: ChatMessage }) => void;
   'chat:typing': (payload: { roomId: string; userId: string; isTyping: boolean }) => void;
@@ -181,6 +198,7 @@ export interface SocketData {
 export const clientEventSchemas = {
   'room:join': roomJoinSchema,
   'room:leave': roomLeaveSchema,
+  'room:settings': roomSettingsUpdateSchema,
   'status:set': statusSetSchema,
   'chat:send': chatSendSchema,
   'chat:typing': chatTypingSchema,

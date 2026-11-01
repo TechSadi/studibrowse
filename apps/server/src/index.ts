@@ -7,6 +7,7 @@ import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
 import { createChatHandlers } from './realtime/handlers/chat.handlers';
 import { createRoomHandlers } from './realtime/handlers/room.handlers';
+import { createSettingsHandlers } from './realtime/handlers/settings.handlers';
 import { createTimerHandlers } from './realtime/handlers/timer.handlers';
 import { createIo } from './realtime/io';
 import { createRoomTimer } from './realtime/roomTimer';
@@ -19,7 +20,12 @@ const roomHandlers = createRoomHandlers();
 const roomTimer = createRoomTimer();
 const io = createIo(httpServer, {
   clientOrigin: env.CLIENT_ORIGIN,
-  registerHandlers: [roomHandlers.register, createTimerHandlers(roomTimer), createChatHandlers()],
+  registerHandlers: [
+    roomHandlers.register,
+    createTimerHandlers(roomTimer),
+    createChatHandlers(),
+    createSettingsHandlers(),
+  ],
 });
 
 httpServer.listen(env.PORT, () => {
