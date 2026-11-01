@@ -1,4 +1,4 @@
-import type { AvatarColor, MemberStatus, PresenceMember } from '@studibrowse/shared';
+import type { AvatarColor, MemberStatus, PresenceMember, TimerPhase } from '@studibrowse/shared';
 
 /**
  * Who is in each room, in memory (one server process in v1). Keyed by room, then user; each user can have
@@ -135,6 +135,38 @@ export function setStatus(
     member.status = status;
     member.focusingSince = status === 'focusing' ? now : null;
   }
+}
+
+/**
+ * The timer moved to `phase` at `at`: everyone follows it (focus → Focusing, anything else → Break), except
+ * people who set themselves Away. Returns whether anyone's status changed.
+ */
+export function applyPhaseStatus(roomId: string, phase: TimerPhase, at: Date): boolean {
+  const status: MemberStatus = phase === 'focus' ? 'focusing' : 'break';
+  let changed = false;
+  for (const member of rooms.get(roomId)?.members.values() ?? []) {
+    if (member.status === 'away' || member.status === status) continue;
+    member.status = status;
+    member.focusingSince = status === 'focusing' ? at : null;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Focus time to credit when a focus phase ends at `endedAt`, having run for `runMs`: each member who is
+ * Focusing gets the time since they started focusing, up to `runMs`. Away and Break members get nothing.
+ */
+export function focusCredits(
+  roomId: string,
+  endedAt: Date,
+  runMs: number,
+): { userId: string; focusedMs: number }[] {
+  return [...(rooms.get(roomId)?.members ?? [])].flatMap(([userId, member]) => {
+    if (member.status !== 'focusing' || !member.focusingSince) return [];
+    const focusedMs = Math.min(runMs, endedAt.getTime() - member.focusingSince.getTime());
+    return focusedMs > 0 ? [{ userId, focusedMs }] : [];
+  });
 }
 
 export function getHostId(roomId: string): string | null {

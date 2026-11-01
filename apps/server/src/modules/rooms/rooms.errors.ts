@@ -11,4 +11,6 @@ export const roomFull = () =>
 
 export const notAMember = () => new AppError(403, 'NOT_A_MEMBER', 'Join the room first.');
 
+export const notHost = () => new AppError(403, 'NOT_HOST', 'Only the host can control the timer.');
+
 export const invalidTimerCommand = (message: string) => new AppError(409, 'INVALID_TIMER_COMMAND', message);

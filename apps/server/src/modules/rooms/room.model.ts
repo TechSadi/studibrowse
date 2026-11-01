@@ -39,6 +39,29 @@ const timerSchema = new Schema(
   { _id: false },
 );
 
+/**
+ * Focus time credited during the current run (start → done), for the session log. Internal: never serialised.
+ * See docs/ARCHITECTURE.md › Timer.
+ */
+const runSchema = new Schema(
+  {
+    startedAt: { type: Date, default: null },
+    focus: {
+      type: [
+        new Schema(
+          {
+            userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+            focusedMs: { type: Number, required: true, min: 0 },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+  },
+  { _id: false },
+);
+
 const roomSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: ROOM_NAME_MAX },
@@ -55,6 +78,7 @@ const roomSchema = new Schema(
     },
     timerSettings: { type: timerSettingsSchema, required: true },
     timer: { type: timerSchema, required: true },
+    run: { type: runSchema, default: () => ({}) },
     totalSessions: { type: Number, required: true, default: 0 },
     totalFocusMins: { type: Number, required: true, default: 0 },
     /** Set while nobody is connected. The cleanup job deletes the room once the grace period passes. */

@@ -88,11 +88,29 @@ export function reset(_state: TimerState, _settings: TimerSettings, _now: Date):
  * drift; after a long outage (a restart) it catches up through every phase that should have ended.
  */
 export function advance(state: TimerState, settings: TimerSettings, now: Date): TimerState {
+  return advanceSteps(state, settings, now).at(-1) ?? state;
+}
+
+/**
+ * The phases `advance` passes through, in order, ending with the state it returns. Empty when nothing is due.
+ * Each phase that ended did so at the previous state's `endsAt`.
+ */
+export function advanceSteps(state: TimerState, settings: TimerSettings, now: Date): TimerState[] {
+  const steps: TimerState[] = [];
   let current = state;
   while (isActive(current) && current.endsAt && current.endsAt.getTime() <= now.getTime()) {
     current = nextPhase(current, settings, current.endsAt.getTime(), settings.autoStart);
+    steps.push(current);
   }
-  return current;
+  return steps;
+}
+
+/** How much of the current focus phase has run so far (pauses excluded). 0 outside a focus phase. */
+export function focusRunMs(state: TimerState, settings: TimerSettings, now: Date): number {
+  if (state.phase !== 'focus') return 0;
+  const duration = phaseDurationMs('focus', settings);
+  const left = state.endsAt ? state.endsAt.getTime() - now.getTime() : (state.pausedRemaining ?? duration);
+  return Math.min(duration, Math.max(0, duration - left));
 }
 
 /**

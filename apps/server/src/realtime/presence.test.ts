@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { MemberStatus } from '@studibrowse/shared';
 import {
   addSocket,
+  applyPhaseStatus,
   countMembers,
+  focusCredits,
   fullRoomIds,
   hasConnectedSockets,
   isMember,
@@ -167,5 +169,55 @@ describe('presence', () => {
     expect(removeMember('room-1', 'maya')).toBe(false);
     expect(countMembers('room-1')).toBe(0);
     expect(isSocketInRoom('room-1', 's1')).toBe(false);
+  });
+});
+
+describe('applyPhaseStatus', () => {
+  it('moves everyone with the timer but leaves Away alone', () => {
+    join('room-1', 'maya', 's1', { status: 'break' });
+    join('room-1', 'jordan', 's2', { status: 'break' });
+    join('room-1', 'alex', 's3', { status: 'away' });
+
+    expect(applyPhaseStatus('room-1', 'focus', at(10))).toBe(true);
+    expect(listMembers('room-1').map((m) => [m.userId, m.status, m.focusingSince])).toEqual([
+      ['maya', 'focusing', at(10).toISOString()],
+      ['jordan', 'focusing', at(10).toISOString()],
+      ['alex', 'away', null],
+    ]);
+
+    expect(applyPhaseStatus('room-1', 'shortBreak', at(20))).toBe(true);
+    expect(listMembers('room-1').map((m) => [m.status, m.focusingSince])).toEqual([
+      ['break', null],
+      ['break', null],
+      ['away', null],
+    ]);
+  });
+
+  it('reports no change when everyone already follows the phase', () => {
+    join('room-1', 'maya', 's1', { status: 'focusing', now: at(3) });
+    expect(applyPhaseStatus('room-1', 'focus', at(10))).toBe(false);
+    // Already focusing, so their focus time keeps counting from when it started.
+    expect(listMembers('room-1')[0]!.focusingSince).toBe(at(3).toISOString());
+    expect(applyPhaseStatus('missing', 'idle', at(10))).toBe(false);
+  });
+});
+
+describe('focusCredits', () => {
+  it('credits Focusing members from focusingSince, capped at how long the phase ran', () => {
+    join('room-1', 'maya', 's1', { status: 'focusing', now: at(0) });
+    join('room-1', 'jordan', 's2', { status: 'focusing', now: at(1200) });
+    join('room-1', 'alex', 's3', { status: 'away', now: at(0) });
+    join('room-1', 'sam', 's4', { status: 'break', now: at(0) });
+
+    expect(focusCredits('room-1', at(1500), 1_500_000 - 60_000)).toEqual([
+      { userId: 'maya', focusedMs: 1_440_000 },
+      { userId: 'jordan', focusedMs: 300_000 },
+    ]);
+  });
+
+  it('leaves out anyone with no time to credit', () => {
+    join('room-1', 'maya', 's1', { status: 'focusing', now: at(100) });
+    expect(focusCredits('room-1', at(100), 60_000)).toEqual([]);
+    expect(focusCredits('missing', at(100), 60_000)).toEqual([]);
   });
 });

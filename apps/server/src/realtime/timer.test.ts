@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimerSettings } from '@studibrowse/shared';
 import {
   advance,
+  advanceSteps,
+  focusRunMs,
   idleTimer,
   isPaused,
   isRunning,
@@ -326,6 +328,50 @@ describe('skip', () => {
   it('is rejected when idle or done', () => {
     expectInvalid(() => skip(idleTimer(), settings, now()));
     expectInvalid(() => skip(done(4), settings, now()));
+  });
+});
+
+describe('advanceSteps', () => {
+  it('is empty when nothing is due', () => {
+    expect(advanceSteps(runningState('focus', 1, at(MIN)), settings, now())).toEqual([]);
+    expect(advanceSteps(idleTimer(), settings, now())).toEqual([]);
+  });
+
+  it('lists every phase passed through, each timed from the previous endsAt', () => {
+    const state = runningState('focus', 1, at(0));
+    const steps = advanceSteps(state, settings, at(31 * MIN));
+    expect(steps).toEqual([
+      runningState('shortBreak', 1, at(5 * MIN)),
+      runningState('focus', 2, at(30 * MIN)),
+      runningState('shortBreak', 2, at(35 * MIN)),
+    ]);
+    expect(steps.at(-1)).toEqual(advance(state, settings, at(31 * MIN)));
+  });
+
+  it('stops at a phase waiting for the host', () => {
+    expect(advanceSteps(runningState('focus', 1, at(0)), manual, at(60 * MIN))).toEqual([
+      pausedState('shortBreak', 1, 5 * MIN),
+    ]);
+  });
+});
+
+describe('focusRunMs', () => {
+  it('counts how much of a running focus phase has gone', () => {
+    expect(focusRunMs(runningState('focus', 1, at(15 * MIN)), settings, now())).toBe(10 * MIN);
+  });
+
+  it('counts a paused focus phase up to the pause', () => {
+    expect(focusRunMs(pausedState('focus', 1, 20 * MIN), settings, now())).toBe(5 * MIN);
+  });
+
+  it('is never more than the phase or less than nothing', () => {
+    expect(focusRunMs(runningState('focus', 1, at(-MIN)), settings, now())).toBe(25 * MIN);
+    expect(focusRunMs(runningState('focus', 1, at(30 * MIN)), settings, now())).toBe(0);
+  });
+
+  it('is 0 outside focus', () => {
+    expect(focusRunMs(runningState('shortBreak', 1, at(MIN)), settings, now())).toBe(0);
+    expect(focusRunMs(idleTimer(), settings, now())).toBe(0);
   });
 });
 

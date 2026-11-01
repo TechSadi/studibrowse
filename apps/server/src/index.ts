@@ -6,16 +6,19 @@ import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from '
 import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
 import { createRoomHandlers } from './realtime/handlers/room.handlers';
+import { createTimerHandlers } from './realtime/handlers/timer.handlers';
 import { createIo } from './realtime/io';
+import { createRoomTimer } from './realtime/roomTimer';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const app = createApp({ isDatabaseConnected, clientOrigin: env.CLIENT_ORIGIN });
 const httpServer = createServer(app);
 const roomHandlers = createRoomHandlers();
+const roomTimer = createRoomTimer();
 const io = createIo(httpServer, {
   clientOrigin: env.CLIENT_ORIGIN,
-  registerHandlers: [roomHandlers.register],
+  registerHandlers: [roomHandlers.register, createTimerHandlers(roomTimer)],
 });
 
 httpServer.listen(env.PORT, () => {
@@ -25,6 +28,10 @@ let stopRoomCleanup: (() => void) | undefined;
 // The first connection only: Mongoose reconnects by itself after that.
 mongoose.connection.once('connected', () => {
   stopRoomCleanup = startRoomCleanup();
+  // Timers keep running in the database while the server is down; pick them up again.
+  roomTimer
+    .restore(io)
+    .catch((err: unknown) => logger.error({ err }, '[rooms] failed to reschedule running timers'));
 });
 void connectToDatabase(env.MONGODB_URI);
 
@@ -49,6 +56,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   try {
     stopRoomCleanup?.();
     roomHandlers.dispose();
+    roomTimer.dispose();
     // Closes every socket and the underlying HTTP server.
     await io.close();
     await disconnectFromDatabase();

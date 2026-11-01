@@ -9,6 +9,7 @@ import {
   markRoomOccupied,
   setRoomHost,
 } from '../../modules/rooms/rooms.service';
+import { broadcastPresence } from '../broadcast';
 import { onEvent } from '../handler';
 import {
   addSocket,
@@ -47,10 +48,6 @@ export function createRoomHandlers({
     const key = departureKey(roomId, userId);
     clearTimeout(pendingDepartures.get(key));
     pendingDepartures.delete(key);
-  }
-
-  function broadcastPresence(io: TypedServer, roomId: string): void {
-    io.to(roomChannel(roomId)).emit('presence:update', { roomId, members: listMembers(roomId) });
   }
 
   /** Someone left for good: by room:leave, or when the reconnect window ran out. */
@@ -92,7 +89,7 @@ export function createRoomHandlers({
       if (wasEmpty) await markRoomOccupied(roomId);
       const snapshot = await getRoomSnapshot(joinable, userId);
       broadcastPresence(io, roomId);
-      return { ...snapshot, members: listMembers(roomId) };
+      return { ...snapshot, members: listMembers(roomId), serverNow: Date.now() };
     });
 
     onEvent(io, socket, 'room:leave', async ({ roomId }, { userId }) => {
@@ -142,7 +139,7 @@ export function createRoomHandlers({
   return { register, dispose };
 }
 
-function requireSocketInRoom(roomId: string, socket: TypedSocket): void {
+export function requireSocketInRoom(roomId: string, socket: TypedSocket): void {
   if (!isSocketInRoom(roomId, socket.id)) throw notAMember();
 }
 

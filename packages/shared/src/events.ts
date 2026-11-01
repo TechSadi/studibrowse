@@ -77,7 +77,7 @@ export const chatSendSchema = z.strictObject({
 
 export const chatTypingSchema = z.strictObject({ roomId, isTyping: z.boolean() });
 
-/** timer:start, timer:pause, timer:skip and timer:reset. */
+/** timer:start (which also resumes a paused timer), timer:pause, timer:skip and timer:reset. */
 export const timerCommandSchema = roomOnlySchema;
 
 export const goalAddSchema = z.strictObject({ roomId, text: goalTextSchema });
@@ -126,6 +126,15 @@ export interface RoomJoinData {
   resources: RoomResource[];
   /** The last 50, oldest first. */
   messages: ChatMessage[];
+  /** The server's clock (epoch ms) when it answered, so the client can correct its own clock for the timer. */
+  serverNow: number;
+}
+
+/** The room's timer after a host command or a phase change. `serverNow` is the server's clock in epoch ms. */
+export interface TimerStatePayload {
+  roomId: string;
+  timer: RoomTimer;
+  serverNow: number;
 }
 
 export interface ClientToServerEvents {
@@ -151,7 +160,7 @@ export interface ServerToClientEvents {
   'presence:update': (payload: { roomId: string; members: PresenceMember[] }) => void;
   'chat:new': (payload: { message: ChatMessage }) => void;
   'chat:typing': (payload: { roomId: string; userId: string; isTyping: boolean }) => void;
-  'timer:state': (payload: { roomId: string; timer: RoomTimer }) => void;
+  'timer:state': (payload: TimerStatePayload) => void;
   'goal:update': (payload: { roomId: string; goals: RoomGoal[] }) => void;
   'resource:new': (payload: { resource: RoomResource }) => void;
   'session:logged': (payload: {

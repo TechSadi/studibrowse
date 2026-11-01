@@ -48,7 +48,7 @@ function toRoomHost(host: HostRecord): RoomHost {
   };
 }
 
-function toRoomTimer(timer: RoomRecord['timer']): RoomTimer {
+export function toRoomTimer(timer: RoomRecord['timer']): RoomTimer {
   return {
     phase: timer.phase as TimerPhase,
     round: timer.round,

@@ -30,18 +30,18 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 
 | Event | Direction | Payload | Who may send it | Response |
 | --- | --- | --- | --- | --- |
-| `room:join` | client → server | `{ roomId, inviteCode? }`. `inviteCode` is the 10-character code from the invite link | Any signed-in user, while the room is open and has fewer than `maxSize` people (counted by person, not tab). A private room also needs `inviteCode`, unless you're its host or already in it | Ack data: `{ room, members, resources, messages }`. `room` is the `RoomDetail` and already holds the timer and goals; `members` is longest present first; `messages` is the last 50, oldest first. Room gets `presence:update`. Errors: `ROOM_NOT_FOUND` (missing, or private without the right code), `ROOM_CLOSED`, `ROOM_FULL` |
+| `room:join` | client → server | `{ roomId, inviteCode? }`. `inviteCode` is the 10-character code from the invite link | Any signed-in user, while the room is open and has fewer than `maxSize` people (counted by person, not tab). A private room also needs `inviteCode`, unless you're its host or already in it | Ack data: `{ room, members, resources, messages, serverNow }`. `room` is the `RoomDetail` and already holds the timer and goals; `members` is longest present first; `messages` is the last 50, oldest first; `serverNow` is the server's clock in epoch ms, for the timer's clock offset. A newcomer's status follows the timer phase. Room gets `presence:update`. Errors: `ROOM_NOT_FOUND` (missing, or private without the right code), `ROOM_CLOSED`, `ROOM_FULL` |
 | `room:leave` | client → server | `{ roomId }` | Member (this socket joined the room). Error: `NOT_A_MEMBER` | Ack data: `{}`. Once all your tabs in the room have left, you're removed straight away and the room gets `presence:update`. If the room now has no sockets, the 5-minute grace starts |
 | `presence:update` | server → room | `{ roomId, members: [{ userId, name, username, avatarColor, status, workingOn, isHost, joinedAt, focusingSince }] }` | Server only | n/a |
 | `status:set` | client → server | `{ roomId, status?: 'focusing' \| 'break' \| 'away', workingOn? }`. At least one of the two; `workingOn` is trimmed, up to 80 characters, and `''` clears it | Member (own status only). Error: `NOT_A_MEMBER` | Ack data: `{}`. Room gets `presence:update` |
 | `chat:send` | client → server | `{ roomId, text }`. `text` is trimmed, 1 to 500 characters | Member. 5 per 5 seconds per socket | Ack data: `{ message }`. Saved, then room gets `chat:new` |
 | `chat:new` | server → room | `{ message: { id, roomId, userId, text, createdAt } }` | Server only | n/a |
 | `chat:typing` | both | Client: `{ roomId, isTyping }`. Server: `{ roomId, userId, isTyping }` | Member. 10 per 5 seconds per socket | No ack. Sent to the rest of the room |
-| `timer:start` | client → server | `{ roomId }` | Host | Ack data: `{}`. Room gets `timer:state` |
-| `timer:pause` | client → server | `{ roomId }` | Host | Ack data: `{}`. Room gets `timer:state` |
-| `timer:skip` | client → server | `{ roomId }` | Host | Ack data: `{}`. Room gets `timer:state` |
-| `timer:reset` | client → server | `{ roomId }` | Host | Ack data: `{}`. Room gets `timer:state` |
-| `timer:state` | server → room | `{ roomId, timer: { phase, round, endsAt, pausedRemaining } }` | Server only | n/a |
+| `timer:start` | client → server | `{ roomId }` | Host | Ack data: `{}`. From `idle` or `done` starts focus round 1; when paused (or waiting for the host between phases) resumes. Room gets `timer:state` |
+| `timer:pause` | client → server | `{ roomId }` | Host | Ack data: `{}`. Only while running. Room gets `timer:state` |
+| `timer:skip` | client → server | `{ roomId }` | Host | Ack data: `{}`. Ends the current focus or break now. Room gets `timer:state` |
+| `timer:reset` | client → server | `{ roomId }` | Host | Ack data: `{}`. Back to `idle`. Room gets `timer:state` |
+| `timer:state` | server → room | `{ roomId, timer: { phase, round, endsAt, pausedRemaining }, serverNow }`. `endsAt` is ISO or null; `serverNow` is the server's clock in epoch ms | Server only. Sent after every command and whenever a phase ends on its own | n/a |
 | `goal:add` | client → server | `{ roomId, text }`. `text` is trimmed, 1 to 80 characters | Member (at most 10 goals per room) | Ack data: `{}`. Room gets `goal:update` |
 | `goal:toggle` | client → server | `{ roomId, goalId }` | Member | Ack data: `{}`. Room gets `goal:update` |
 | `goal:remove` | client → server | `{ roomId, goalId }` | Member | Ack data: `{}`. Room gets `goal:update` |
@@ -52,6 +52,8 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 | `member:remove` | client → server | `{ roomId, userId }` | Host (not themselves) | Ack data: `{}`. The removed member's sockets leave the room. Room gets `presence:update` |
 | `session:logged` | server → room | `{ roomId, session: { id, roundsCompleted, goalsDone, participants }, totalSessions, totalFocusMins }` | Server only | n/a |
 | `notification:new` | server → `user:<id>` | `{ notification: { id, type, roomId, text, read, createdAt } }`, where `type` is `roomStarted`, `roomFull`, `memberJoined` or `roundEnded` | Server only | n/a. Also saved to `notifications` |
+
+**Timer commands.** Every `timer:*` command checks, in order, that this socket joined the room (`NOT_A_MEMBER`) and that the sender is the room's current host (`NOT_HOST`), on every call. Then `ROOM_CLOSED` if the room has closed, and `INVALID_TIMER_COMMAND` if the command doesn't fit the timer (for example `timer:pause` while idle). A refused command changes nothing and sends no `timer:state`. When the phase changes, everyone's status follows it (focus → Focusing, anything else → Break; Away is left alone) and the room gets `presence:update` before `timer:state`. Clients draw the countdown as `endsAt - (Date.now() + clockOffset)`, where `clockOffset = serverNow - Date.now()` when the state arrived; the server never sends ticks.
 
 **Disconnects are not leaves.** When a user's last socket in a room drops, they keep their place (and seat) for 30 seconds (`RECONNECT_GRACE_MS`); a `room:join` in that time picks up where they were, with the same `joinedAt` and status. After that they're removed and the room gets `presence:update`. When the host leaves for good (leave or window expired), the longest-present member becomes host and the same `presence:update` shows the new `isHost`.
 

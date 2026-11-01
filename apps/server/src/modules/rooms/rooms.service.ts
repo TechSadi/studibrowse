@@ -188,11 +188,11 @@ export async function loadMemberProfile(userId: string): Promise<MemberProfile> 
   return { name: user.name, username: user.username, avatarColor: user.avatarColor as AvatarColor };
 }
 
-/** Everything room:join answers with except the members, which come from presence. */
+/** Everything room:join answers with except the members (from presence) and the server's clock. */
 export async function getRoomSnapshot(
   { room, host }: JoinableRoom,
   viewerId: string,
-): Promise<Omit<RoomJoinData, 'members'>> {
+): Promise<Omit<RoomJoinData, 'members' | 'serverNow'>> {
   const [resources, latest] = await Promise.all([
     Resource.find({ roomId: room._id }).sort({ createdAt: 1, _id: 1 }).lean<ResourceRecord[]>(),
     Message.find({ roomId: room._id })
