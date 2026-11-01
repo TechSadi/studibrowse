@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
-import { useId } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useId } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { ModalShell } from '../../components/ui/ModalShell';
 import { sessionsApi } from '../../lib/api';
+import { invalidateProgress } from '../progress/queries';
 import { firstName } from './people';
 import type { JoinedRoom } from './roomSession';
 import { summaryView } from './sessionSummary';
@@ -44,6 +45,12 @@ export function SessionSummaryDialog({
     gcTime: 0,
   });
   const view = query.data ? summaryView(query.data, room.goals) : null;
+  const queryClient = useQueryClient();
+  const loaded = query.isSuccess;
+  useEffect(() => {
+    // Your time is saved now: refresh Home, Progress and the streak card so they show it.
+    if (loaded) invalidateProgress(queryClient);
+  }, [loaded, queryClient]);
 
   return (
     <ModalShell

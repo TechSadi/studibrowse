@@ -11,20 +11,28 @@ export interface StreakState {
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
+/**
+ * `timeZone` if this Node knows it, otherwise the default. A newer browser can save a zone we don't know yet;
+ * its days are then counted in the default rather than failing.
+ */
+export function resolveTimeZone(timeZone: string): string {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone });
+    return timeZone;
+  } catch {
+    return DEFAULT_TIME_ZONE;
+  }
+}
+
 function formatter(timeZone: string): Intl.DateTimeFormat {
   let format = formatters.get(timeZone);
   if (!format) {
-    try {
-      format = new Intl.DateTimeFormat('en-CA', {
-        timeZone,
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric',
-      });
-    } catch {
-      // A zone this Node doesn't know (saved by a newer browser): count in the default rather than fail.
-      format = formatter(DEFAULT_TIME_ZONE);
-    }
+    format = new Intl.DateTimeFormat('en-CA', {
+      timeZone: resolveTimeZone(timeZone),
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
     formatters.set(timeZone, format);
   }
   return format;

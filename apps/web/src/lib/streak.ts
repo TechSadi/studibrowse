@@ -1,4 +1,7 @@
-import type { PublicUser } from '@studibrowse/shared';
+import type { ProgressSummaryResponse, PublicUser } from '@studibrowse/shared';
+
+/** What the streak card needs: the summary's streak, worked out in the user's own time zone. */
+export type StreakState = Pick<ProgressSummaryResponse['streak'], 'current' | 'studiedToday'>;
 
 export interface StreakView {
   /** Days in a row, or 0 when the streak has lapsed. */
@@ -18,18 +21,25 @@ function calendarDaysBetween(earlier: Date, later: Date): number {
 }
 
 /**
- * The sidebar streak card's numbers. The server only updates the streak when a session is logged,
- * so a stored streak whose last study day is before yesterday has already lapsed.
+ * The streak from the signed-in user as last loaded, in the browser's time zone: the fallback while the
+ * progress summary can't load. The server only updates the streak when a session is logged, so a stored
+ * streak whose last study day is before yesterday has already lapsed.
  */
-export function streakView(user: Pick<PublicUser, 'streak' | 'lastStudiedAt'>, now: Date): StreakView {
-  const week = Array<boolean>(7).fill(false);
-  if (!user.lastStudiedAt || user.streak.current <= 0) return { days: 0, studiedToday: false, week };
-
+export function streakFromUser(user: Pick<PublicUser, 'streak' | 'lastStudiedAt'>, now: Date): StreakState {
+  if (!user.lastStudiedAt || user.streak.current <= 0) return { current: 0, studiedToday: false };
   const daysAgo = calendarDaysBetween(new Date(user.lastStudiedAt), now);
-  if (daysAgo < 0 || daysAgo > 1) return { days: 0, studiedToday: false, week };
+  if (daysAgo < 0 || daysAgo > 1) return { current: 0, studiedToday: false };
+  return { current: user.streak.current, studiedToday: daysAgo === 0 };
+}
 
-  // Fill backwards from the last study day.
-  const lastIndex = 6 - daysAgo;
-  for (let i = 0; i < Math.min(user.streak.current, lastIndex + 1); i++) week[lastIndex - i] = true;
-  return { days: user.streak.current, studiedToday: daysAgo === 0, week };
+/**
+ * The sidebar streak card's numbers. A streak of N days means the N days up to the last study day (today
+ * or yesterday) were all studied, so the week's dots fill back from there.
+ */
+export function streakView({ current, studiedToday }: StreakState): StreakView {
+  const week = Array<boolean>(7).fill(false);
+  if (current <= 0) return { days: 0, studiedToday: false, week };
+  const lastIndex = studiedToday ? 6 : 5;
+  for (let i = 0; i < Math.min(current, lastIndex + 1); i++) week[lastIndex - i] = true;
+  return { days: current, studiedToday, week };
 }

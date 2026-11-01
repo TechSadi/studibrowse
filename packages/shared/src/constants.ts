@@ -15,6 +15,15 @@ export const INVITE_CODE_PATTERN = /^[A-Za-z0-9_-]{10}$/;
 /** Rooms worth joining loads 3 rows of 3 at a time. */
 export const PUBLIC_ROOMS_PAGE_SIZE = 9;
 
+/** Rows per page of Progress › Session history, and the most GET /api/sessions/mine returns. */
+export const SESSION_HISTORY_PAGE_SIZE = 10;
+/** Home › Your recent sessions. */
+export const RECENT_SESSIONS_COUNT = 3;
+
+/** The ranges GET /api/progress/summary answers for. Weeks run Sunday to Saturday in the user's time zone. */
+export const PROGRESS_RANGES = ['week'] as const;
+export type ProgressRange = (typeof PROGRESS_RANGES)[number];
+
 /** `idle`: not started yet. `done`: every round finished. See docs/ARCHITECTURE.md › Timer. */
 export const TIMER_PHASES = ['idle', 'focus', 'shortBreak', 'longBreak', 'done'] as const;
 export type TimerPhase = (typeof TIMER_PHASES)[number];

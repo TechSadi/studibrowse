@@ -11,6 +11,8 @@ import type {
   LatestSessionResponse,
   LoginInput,
   MeResponse,
+  MySessionsResponse,
+  ProgressSummaryResponse,
   PublicRoomsQuery,
   PublicRoomsResponse,
   ResetPasswordInput,
@@ -210,8 +212,14 @@ export const roomsApi = {
 };
 
 export const sessionsApi = {
+  mine: ({ cursor, limit }: { cursor?: string | undefined; limit?: number } = {}) =>
+    request<MySessionsResponse>('GET', `/api/sessions/mine${queryString({ cursor, limit })}`, { auth: true }),
   latestMine: (roomId: string, since?: number) =>
     request<LatestSessionResponse>('GET', `/api/sessions/mine/latest${queryString({ roomId, since })}`, {
       auth: true,
     }),
+};
+
+export const progressApi = {
+  summary: () => request<ProgressSummaryResponse>('GET', '/api/progress/summary?range=week', { auth: true }),
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localDayNumber, nextStreak, type StreakState } from './streak';
+import { localDayNumber, nextStreak, resolveTimeZone, type StreakState } from './streak';
 
 const fresh: StreakState = { current: 0, longest: 0, lastStudiedAt: null };
 const utc = (iso: string) => new Date(`${iso}Z`);
@@ -24,6 +24,13 @@ describe('localDayNumber', () => {
   it('falls back to UTC for a zone it doesn’t know', () => {
     const date = utc('2026-03-10T23:30:00');
     expect(localDayNumber(date, 'Mars/Olympus')).toBe(localDayNumber(date, 'UTC'));
+  });
+});
+
+describe('resolveTimeZone', () => {
+  it('keeps a zone it knows and falls back to UTC for one it doesn’t', () => {
+    expect(resolveTimeZone('America/Los_Angeles')).toBe('America/Los_Angeles');
+    expect(resolveTimeZone('Mars/Olympus')).toBe('UTC');
   });
 });
 

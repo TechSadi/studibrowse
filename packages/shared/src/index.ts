@@ -2,6 +2,7 @@ export * from './constants';
 export * from './events';
 export * from './initials';
 export * from './schemas/auth';
+export * from './schemas/progress';
 export * from './schemas/rooms';
 export * from './schemas/sessions';
 export * from './schemas/uploads';

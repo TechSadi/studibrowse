@@ -1,4 +1,4 @@
-import type { AvatarColor, TimerPhase } from '../constants';
+import type { AvatarColor, ProgressRange, TimerPhase } from '../constants';
 
 /** Body of every error response from the API. */
 export interface ApiErrorBody {
@@ -228,9 +228,52 @@ export interface MySession {
   endedAt: string | null;
   focusedMins: number;
   roundsCompleted: number;
+  /** The rounds the timer was set to run, for "3 of 4". Null for sessions saved before it was recorded. */
+  roundsTotal: number | null;
   /** The room's ticked goals, out of `goalsTotal`, when the session was last saved. */
   goalsDone: number;
   goalsTotal: number;
+  /** Everyone who focused for at least a minute in the run, you included. */
+  peopleCount: number;
+}
+
+/**
+ * GET /api/sessions/mine: your session history, newest first. The first page starts with any sessions still in
+ * progress (you left, the run goes on), then finished ones by when they ended.
+ */
+export interface MySessionsResponse {
+  sessions: MySession[];
+  /** Pass as `cursor` for the next (older) page; null on the last page. */
+  nextCursor: string | null;
+}
+
+/** One local calendar day in your time zone. */
+export interface ProgressDay {
+  /** "2026-11-01", the day in your time zone. */
+  date: string;
+  focusMins: number;
+}
+
+/** GET /api/progress/summary?range=week: Progress's tiles and chart, Home's weekly card and the streak card. */
+export interface ProgressSummaryResponse {
+  range: ProgressRange;
+  /** Today in your time zone, "2026-11-04". */
+  today: string;
+  /** This week, Sunday to Saturday in your time zone: always 7 days. */
+  days: ProgressDay[];
+  week: {
+    focusMins: number;
+    goalMins: number;
+    /** Sessions you were in that started this week, in progress ones included. */
+    sessions: number;
+    /** Different people you studied with in them, not counting you. */
+    people: number;
+    /** Different rooms they were in. */
+    rooms: number;
+  };
+  lastWeek: { focusMins: number };
+  /** `current` is 0 once the streak has lapsed (no study today or yesterday, in your time zone). */
+  streak: { current: number; longest: number; studiedToday: boolean };
 }
 
 /** GET /api/sessions/mine/latest: what the session summary shows after you leave a room. */

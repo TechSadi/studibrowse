@@ -1,13 +1,22 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PublicUser, RoomDetail, RoomSummary } from '@studibrowse/shared';
+import type {
+  MySession,
+  ProgressSummaryResponse,
+  PublicUser,
+  RoomDetail,
+  RoomSummary,
+} from '@studibrowse/shared';
 import { setAccessToken } from '../../lib/api';
+import { makeSession, makeSummary } from '../../test/progressFixtures';
 import { makeUser, renderRoutes } from '../../test/renderRoutes';
 
 let user: PublicUser;
 let liveRooms: RoomSummary[];
 let roomsFail: boolean;
 let createdBodies: unknown[];
+let summary: ProgressSummaryResponse;
+let mySessions: MySession[] | 'error';
 
 const timerSettings = {
   focusMins: 25,
@@ -61,6 +70,16 @@ function fakeFetch(input: string, init: RequestInit = {}) {
     }
     return Response.json({ rooms: liveRooms, nextPage: null });
   }
+  if (route === 'GET /api/progress/summary') return Response.json(summary);
+  if (route === 'GET /api/sessions/mine') {
+    if (mySessions === 'error') {
+      return Response.json(
+        { error: { code: 'INTERNAL_ERROR', message: 'Something went wrong.' } },
+        { status: 500 },
+      );
+    }
+    return Response.json({ sessions: mySessions, nextCursor: null });
+  }
   if (route === 'POST /api/rooms') {
     const body = JSON.parse(String(init.body)) as { name: string; isPublic: boolean };
     createdBodies.push(body);
@@ -80,6 +99,8 @@ beforeEach(() => {
   liveRooms = [];
   roomsFail = false;
   createdBodies = [];
+  summary = makeSummary();
+  mySessions = [];
   vi.stubGlobal('fetch', vi.fn(fakeFetch));
 });
 
@@ -103,7 +124,10 @@ describe('HomePage', () => {
     await renderHome();
     expect(screen.getByText('No rooms live right now')).toBeDefined();
     expect(await screen.findByText('No live rooms right now')).toBeDefined();
-    expect(screen.getByText('No sessions yet')).toBeDefined();
+    expect(await screen.findByText('No sessions yet')).toBeDefined();
+    const weekly = screen.getByRole('region', { name: 'Your focus this week' });
+    expect(within(weekly).getByText('0m')).toBeDefined();
+    expect(within(weekly).getByRole('img', { name: 'No focus time logged this week yet' })).toBeDefined();
   });
 
   it('measures this week against your weekly goal', async () => {
@@ -113,6 +137,48 @@ describe('HomePage', () => {
     expect(
       within(weekly).getByRole('progressbar', { name: 'Weekly goal' }).getAttribute('aria-valuenow'),
     ).toBe('0');
+  });
+
+  it('shows this week’s focus by day and how it compares with last week', async () => {
+    summary = makeSummary({ minsByDay: [95, 140, 75, 210, 0, 0, 0], lastWeek: { focusMins: 440 } });
+    await renderHome();
+    const weekly = screen.getByRole('region', { name: 'Your focus this week' });
+    expect(await within(weekly).findByText('8h 40m')).toBeDefined();
+    expect(within(weekly).getByText('+18% vs last week')).toBeDefined();
+    expect(within(weekly).getByText('72%')).toBeDefined();
+    expect(
+      within(weekly).getByRole('progressbar', { name: 'Weekly goal' }).getAttribute('aria-valuenow'),
+    ).toBe('72');
+    expect(within(weekly).getByRole('img').getAttribute('aria-label')).toBe(
+      'Focus time this week: Sunday 1h 35m, Monday 2h 20m, Tuesday 1h 15m, Wednesday 3h 30m, Thursday 0m, Friday 0m, Saturday 0m',
+    );
+    // Today's bar carries its time.
+    expect(within(weekly).getByText('3h 30m')).toBeDefined();
+  });
+
+  it('lists your recent sessions, in progress ones first', async () => {
+    mySessions = [
+      makeSession({ roomName: 'Late-night exam grind', endedAt: null, focusedMins: 50, peopleCount: 1 }),
+      makeSession({ roomName: 'Quiet reading room', focusedMins: 75, peopleCount: 16 }),
+    ];
+    await renderHome();
+    const recent = screen.getByRole('region', { name: 'Your recent sessions' });
+    const rows = await within(recent).findAllByRole('listitem');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Late-night exam grindIn progress · just youFocused 50m',
+      'Quiet reading roomThu 29 Oct · with 16 peopleFocused 1h 15m',
+    ]);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/sessions/mine?limit=3')).toBe(true);
+  });
+
+  it('offers a retry when recent sessions can’t load', async () => {
+    mySessions = 'error';
+    await renderHome();
+    const recent = screen.getByRole('region', { name: 'Your recent sessions' });
+    expect(await within(recent).findByText('Couldn’t load your sessions')).toBeDefined();
+    mySessions = [makeSession()];
+    fireEvent.click(within(recent).getByRole('button', { name: 'Try again' }));
+    expect(await within(recent).findByText('Finals week focus')).toBeDefined();
   });
 
   it('opens Create a room through ?create=1', async () => {

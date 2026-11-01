@@ -1,0 +1,76 @@
+.chart {
+  position: relative;
+  margin-top: 24px;
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  overflow: visible;
+}
+
+/* The mockup's .col.has and .col.today bar fills. */
+.hasTop {
+  stop-color: var(--accent);
+  stop-opacity: 0.55;
+}
+
+.hasBottom {
+  stop-color: var(--accent);
+  stop-opacity: 0.25;
+}
+
+.todayTop {
+  stop-color: rgb(var(--glow-mint));
+}
+
+.todayBottom {
+  stop-color: var(--accent);
+}
+
+.value {
+  font-family: var(--mono);
+  font-size: 12px;
+  fill: var(--ink-2);
+  /* Keeps the value readable where the pace line runs through it. */
+  stroke: var(--surface);
+  stroke-width: 6px;
+  paint-order: stroke;
+}
+
+.day {
+  font-size: 13px;
+  fill: var(--muted);
+}
+
+.day.today {
+  fill: var(--accent);
+  font-weight: 700;
+}
+
+.pace line {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+/* A surface-coloured halo stands in for the mockup label's background. */
+.pace text {
+  font-size: 12px;
+  fill: var(--faint);
+  stroke: var(--surface);
+  stroke-width: 6px;
+  paint-order: stroke;
+}
+
+.empty {
+  position: absolute;
+  inset: 0 0 32px;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--muted);
+  pointer-events: none;
+}

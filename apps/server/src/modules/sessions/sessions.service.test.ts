@@ -136,6 +136,7 @@ describe('finalizeSession', () => {
       goalsDone: 2,
       goalsTotal: 3,
       roundsCompleted: 4,
+      roundsTotal: 4,
     });
     expect(await participantsOf(run.sessionId!)).toEqual([
       { userId: maya.id, focusedMins: 100 },

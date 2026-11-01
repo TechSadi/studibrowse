@@ -104,8 +104,10 @@ describe('GET /api/sessions/mine/latest', () => {
         endedAt: null,
         focusedMins: 50,
         roundsCompleted: 1,
+        roundsTotal: null,
         goalsDone: 2,
         goalsTotal: 4,
+        peopleCount: 2,
       },
       roomOpen: true,
       week: { focusMins: 75, goalMins: 720 },
@@ -172,5 +174,127 @@ describe('GET /api/sessions/mine/latest', () => {
     });
     const theirRoom = await openRoom(lapsed.id);
     expect((await latest(lapsedToken, { roomId: theirRoom.id })).body.streakDays).toBe(0);
+  });
+});
+
+function history(token: string, query: Record<string, string | number> = {}) {
+  return request(app).get('/api/sessions/mine').query(query).set('Authorization', `Bearer ${token}`);
+}
+
+const ids = (res: { body: { sessions: { id: string }[] } }) => res.body.sessions.map((session) => session.id);
+
+describe('GET /api/sessions/mine', () => {
+  it('needs you to be logged in', async () => {
+    expect((await request(app).get('/api/sessions/mine')).status).toBe(401);
+  });
+
+  it('is empty for someone with no sessions', async () => {
+    const { token } = await createUserWithToken();
+    const res = await history(token);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sessions: [], nextCursor: null });
+  });
+
+  it('lists your sessions with your own minutes, the people in them and the planned rounds', async () => {
+    const [{ user: maya, token }, { user: jordan }] = await Promise.all([
+      createUserWithToken(),
+      createUserWithToken(),
+    ]);
+    const room = await openRoom(maya.id);
+    const session = await logSession(
+      room.id,
+      [
+        [jordan.id, 100],
+        [maya.id, 50],
+      ],
+      { roundsTotal: 4 },
+    );
+    await logSession(room.id, [[jordan.id, 30]]);
+
+    expect((await history(token)).body.sessions).toEqual([
+      {
+        id: session.id,
+        roomName: 'Finals week focus',
+        startedAt: session.startedAt.toISOString(),
+        endedAt: session.endedAt!.toISOString(),
+        focusedMins: 50,
+        roundsCompleted: 2,
+        roundsTotal: 4,
+        goalsDone: 2,
+        goalsTotal: 4,
+        peopleCount: 2,
+      },
+    ]);
+  });
+
+  it('starts with sessions still in progress, then the rest by when they ended', async () => {
+    const { user, token } = await createUserWithToken();
+    const room = await openRoom(user.id);
+    const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000);
+    const endedEarly = await logSession(room.id, [[user.id, 25]], { startedAt: ago(10), endedAt: ago(9) });
+    const endedLate = await logSession(room.id, [[user.id, 25]], { startedAt: ago(12), endedAt: ago(1) });
+    const running = await logSession(room.id, [[user.id, 25]], { startedAt: ago(3), endedAt: null });
+
+    expect(ids(await history(token))).toEqual([running.id, endedLate.id, endedEarly.id]);
+  });
+
+  it('pages through every session once, even when two ended at the same moment', async () => {
+    const { user, token } = await createUserWithToken();
+    const room = await openRoom(user.id);
+    const sameEnd = new Date(Date.now() - 3_600_000);
+    const created = [];
+    for (let i = 0; i < 5; i++) {
+      created.push(
+        await logSession(room.id, [[user.id, 25]], {
+          endedAt: i < 3 ? sameEnd : new Date(Date.now() - i * DAY),
+        }),
+      );
+    }
+    created.push(await logSession(room.id, [[user.id, 25]], { endedAt: null }));
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const res = await history(token, cursor ? { limit: 2, cursor } : { limit: 2 });
+      expect(res.status).toBe(200);
+      expect(res.body.sessions.length).toBeLessThanOrEqual(2);
+      seen.push(...ids(res));
+      cursor = res.body.nextCursor;
+      pages += 1;
+    } while (cursor && pages < 10);
+
+    expect(pages).toBe(3);
+    expect(new Set(seen).size).toBe(6);
+    expect(seen.sort()).toEqual(created.map((session) => session.id).sort());
+  });
+
+  it('moves on to finished sessions after a first page full of ones in progress', async () => {
+    const { user, token } = await createUserWithToken();
+    const room = await openRoom(user.id);
+    const running = await logSession(room.id, [[user.id, 25]], { endedAt: null });
+    const finished = await logSession(room.id, [[user.id, 25]]);
+
+    const first = await history(token, { limit: 1 });
+    expect(ids(first)).toEqual([running.id]);
+    const second = await history(token, { limit: 1, cursor: first.body.nextCursor });
+    expect(ids(second)).toEqual([finished.id]);
+    expect(second.body.nextCursor).toBeNull();
+  });
+
+  it('never lists sessions you weren’t in', async () => {
+    const [{ token }, { user: jordan }] = await Promise.all([createUserWithToken(), createUserWithToken()]);
+    const room = await openRoom(jordan.id);
+    await logSession(room.id, [[jordan.id, 100]]);
+    await logSession(room.id, [[jordan.id, 100]], { endedAt: null });
+    expect((await history(token)).body.sessions).toEqual([]);
+  });
+
+  it('rejects a cursor it didn’t make and a page that’s too big', async () => {
+    const { token } = await createUserWithToken();
+    const bad = await history(token, { cursor: 'not-a-cursor' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe('VALIDATION_ERROR');
+    expect((await history(token, { limit: 500 })).status).toBe(400);
   });
 });

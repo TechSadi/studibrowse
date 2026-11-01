@@ -9,6 +9,11 @@ export function formatMins(mins: number): string {
   return hours ? `${hours}h ${pad(rest)}m` : `${rest}m`;
 }
 
+/** 720 → "12h", 90 → "1h 30m": a weekly goal is usually whole hours. */
+export function formatGoal(mins: number): string {
+  return mins % 60 === 0 ? `${mins / 60}h` : formatMins(mins);
+}
+
 export interface TimerPlan {
   rounds: number;
   focusMins: number;

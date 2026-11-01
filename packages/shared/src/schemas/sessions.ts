@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SESSION_HISTORY_PAGE_SIZE } from '../constants';
 import { objectIdSchema } from './rooms';
 
 /**
@@ -11,3 +12,19 @@ export const latestSessionQuerySchema = z.object({
 });
 
 export type LatestSessionQuery = z.output<typeof latestSessionQuerySchema>;
+
+/**
+ * GET /api/sessions/mine. `cursor` is the opaque `nextCursor` of the page before; without it you get the first
+ * page, which starts with any sessions still in progress.
+ */
+export const mySessionsQuerySchema = z.object({
+  cursor: z.string().min(1).max(200).optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, 'That page size is not valid.')
+    .max(SESSION_HISTORY_PAGE_SIZE, 'That page size is not valid.')
+    .default(SESSION_HISTORY_PAGE_SIZE),
+});
+
+export type MySessionsQuery = z.output<typeof mySessionsQuerySchema>;

@@ -1,5 +1,5 @@
 import type { LatestSessionResponse, RoomGoal } from '@studibrowse/shared';
-import { formatMins } from '../rooms/timerText';
+import { formatGoal, formatMins } from '../rooms/timerText';
 
 export interface SummaryView {
   focused: string;
@@ -9,11 +9,6 @@ export interface SummaryView {
   weekly: string;
   /** "86%" */
   weeklyPercent: string;
-}
-
-/** 720 → "12h", 90 → "1h 30m": a weekly goal is usually whole hours. */
-export function formatGoal(mins: number): string {
-  return mins % 60 === 0 ? `${mins / 60}h` : formatMins(mins);
 }
 
 /**

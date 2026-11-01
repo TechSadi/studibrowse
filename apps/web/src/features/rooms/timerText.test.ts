@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RoomTimer, TimerSettings } from '@studibrowse/shared';
-import { formatMins, phaseView, timerPlan } from './timerText';
+import { formatGoal, formatMins, phaseView, timerPlan } from './timerText';
 
 const settings: TimerSettings = {
   focusMins: 25,
@@ -17,6 +17,13 @@ describe('formatMins', () => {
     expect(formatMins(100)).toBe('1h 40m');
     expect(formatMins(125)).toBe('2h 05m');
     expect(formatMins(60)).toBe('1h 00m');
+  });
+});
+
+describe('formatGoal', () => {
+  it('drops the minutes on whole hours', () => {
+    expect(formatGoal(720)).toBe('12h');
+    expect(formatGoal(90)).toBe('1h 30m');
   });
 });
 

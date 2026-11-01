@@ -27,12 +27,16 @@ const sessionSchema = new Schema(
     // How many goals the room had, for "2/4". The room's own goals are emptied when it closes.
     goalsTotal: { type: Number, required: true, default: 0 },
     roundsCompleted: { type: Number, required: true, default: 0 },
+    // The rounds the timer was set to run, for "3 of 4". Older sessions don't have it.
+    roundsTotal: { type: Number, default: null },
   },
   { timestamps: true },
 );
 
-// Progress: someone's sessions, newest first.
+// Progress and the weekly goal: someone's sessions by when they started.
 sessionSchema.index({ 'participants.userId': 1, startedAt: -1 });
+// Session history: someone's sessions by when they ended, with _id to break ties for the cursor.
+sessionSchema.index({ 'participants.userId': 1, endedAt: -1, _id: -1 });
 // A room's history.
 sessionSchema.index({ roomId: 1, startedAt: -1 });
 

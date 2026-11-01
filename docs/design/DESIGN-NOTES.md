@@ -18,7 +18,7 @@ How to read `studibrowse-mockup.html`. Open it in a browser; the "All screens" p
 | `#room` | `/room/:roomId` | Distraction-free: no sidebar, timer centre, one side panel (Chat, Goals, People, Files). Leave opens the session summary dialog |
 | Create dialog | modal over `/home` | Name, subject, size 2-20, public/private, timer settings, auto-start, goals. Reused as host Room settings |
 | Session summary dialog | modal after leaving | Focus time, rounds, goals done, weekly progress, Back to home / Rejoin |
-| `#progress` | `/progress` | This week vs goal, streak, sessions, focus by day chart, history table |
+| `#progress` | `/progress` | This week vs goal, streak, sessions, focus by day chart, history table. Weeks run Sunday to Saturday like Home's chart, so the app reads "Sun 1 Nov to Sat 7 Nov" and "by Saturday" where the mockup's text says Mon to Sun. The "Weekly goal" button links to Settings |
 | `#notifications` | `/notifications` | All / Unread / Rooms opened, grouped Today and Earlier, Join on room alerts |
 | `#profile` | `/u/:username` | Cover, avatar, Follow/Share, Hosting now + Join, stats, recent rooms, about, followers |
 | `#settings` | `/settings` | Account, Appearance (System/Light/Dark), notifications, timer defaults + weekly goal, privacy, log out / delete |

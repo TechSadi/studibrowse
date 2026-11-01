@@ -1,4 +1,10 @@
-import type { LatestSessionResponse, MySession, SessionSummary } from '@studibrowse/shared';
+import type {
+  LatestSessionResponse,
+  MySession,
+  MySessionsQuery,
+  MySessionsResponse,
+  SessionSummary,
+} from '@studibrowse/shared';
 import { createKeyedLock } from '../../lib/keyedLock';
 import { unauthenticated } from '../auth/auth.errors';
 import { Room } from '../rooms/room.model';
@@ -7,6 +13,13 @@ import { withSessionId, type RunFocus, type TimerRun } from '../rooms/roomTimer.
 import { User } from '../users/user.model';
 import { toParticipants, totalFocusMins } from './focusAccounting';
 import { Session, type SessionRecord } from './session.model';
+import {
+  decodeSessionCursor,
+  encodeSessionCursor,
+  FINISHED_START,
+  type SessionPosition,
+} from './sessionCursor';
+import { invalidCursor } from './sessions.errors';
 import { nextStreak } from './streak';
 import { isThisWeek, studiedToday } from './week';
 
@@ -23,10 +36,11 @@ const withUser = createKeyedLock();
 interface SessionRoom {
   name: string;
   goals: { done: boolean }[];
+  timerSettings: { totalRounds: number };
 }
 
 async function loadSessionRoom(roomId: string): Promise<SessionRoom | null> {
-  return Room.findById(roomId, { name: 1, goals: 1 }).lean<SessionRoom>();
+  return Room.findById(roomId, { name: 1, goals: 1, 'timerSettings.totalRounds': 1 }).lean<SessionRoom>();
 }
 
 /** The session document as the run stands now. `endedAt` is set only by finalizeSession. */
@@ -40,6 +54,7 @@ async function writeSession(roomId: string, room: SessionRoom, run: TimerRun, en
     goalsDone: room.goals.filter((goal) => goal.done).length,
     goalsTotal: room.goals.length,
     roundsCompleted: run.roundsCompleted,
+    roundsTotal: room.timerSettings.totalRounds,
   };
   await Session.updateOne(
     { _id: run.sessionId },
@@ -114,8 +129,10 @@ function toMySession(session: SessionRecord, userId: string): MySession {
     endedAt: session.endedAt ? session.endedAt.toISOString() : null,
     focusedMins: myMinutes(session, userId),
     roundsCompleted: session.roundsCompleted,
+    roundsTotal: session.roundsTotal ?? null,
     goalsDone: session.goalsDone,
     goalsTotal: session.goalsTotal,
+    peopleCount: session.participants.length,
   };
 }
 
@@ -161,6 +178,51 @@ export async function getLatestSession(
     week: { focusMins: weekMins, goalMins: user.weeklyGoalMins },
     streakDays: studiedToday(user.lastStudiedAt ?? null, now, user.timeZone) ? user.streak.current : 0,
   };
+}
+
+/** Finished sessions after `position` in history order: `endedAt` desc, then `_id` desc. */
+function finishedAfter({ endedAt, id }: SessionPosition) {
+  // $lt and equality on a date never match null, so in-progress sessions are left out.
+  return { $or: [{ endedAt: { $lt: endedAt } }, { endedAt, _id: { $lt: id } }] };
+}
+
+/**
+ * Your session history, newest first, with your own minutes. The first page (no cursor) starts with sessions
+ * still in progress (you left and the run goes on), at most a page of them, then finished ones by `endedAt`.
+ * The cursor marks the last finished session sent.
+ */
+export async function listMySessions(
+  userId: string,
+  { cursor, limit }: MySessionsQuery,
+): Promise<MySessionsResponse> {
+  const position = cursor === undefined ? FINISHED_START : decodeSessionCursor(cursor);
+  if (!position) throw invalidCursor();
+  const mine = { 'participants.userId': userId };
+
+  const inProgress =
+    cursor === undefined
+      ? await Session.find({ ...mine, endedAt: null })
+          .sort({ startedAt: -1, _id: -1 })
+          .limit(limit)
+          .lean<SessionRecord[]>()
+      : [];
+  const space = limit - inProgress.length;
+  // One extra tells us whether there's another page.
+  const finished = await Session.find({ ...mine, ...finishedAfter(position) })
+    .sort({ endedAt: -1, _id: -1 })
+    .limit(space + 1)
+    .lean<SessionRecord[]>();
+
+  const page = finished.slice(0, space);
+  const last = page.at(-1);
+  let nextCursor: string | null = null;
+  if (finished.length > space) {
+    // A page full of in-progress sessions: the next one starts at the newest finished session.
+    nextCursor = encodeSessionCursor(
+      last ? { endedAt: last.endedAt!, id: last._id.toString() } : FINISHED_START,
+    );
+  }
+  return { sessions: [...inProgress, ...page].map((session) => toMySession(session, userId)), nextCursor };
 }
 
 /**

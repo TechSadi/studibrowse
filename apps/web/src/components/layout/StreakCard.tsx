@@ -1,9 +1,12 @@
 import type { PublicUser } from '@studibrowse/shared';
-import { streakView } from '../../lib/streak';
+import { useProgressSummary } from '../../features/progress/queries';
+import { streakFromUser, streakView } from '../../lib/streak';
 import { Icon } from '../ui/Icon';
+import { Skeleton } from '../ui/Skeleton';
 import styles from './StreakCard.module.css';
 
 interface StreakCardProps {
+  /** The signed-in user, for when the progress summary can't load. */
   user: Pick<PublicUser, 'streak' | 'lastStudiedAt'>;
   className?: string;
 }
@@ -16,11 +19,33 @@ function streakCopy(days: number, studiedToday: boolean): { title: string; note:
     : { title, note: 'One session today keeps it going.' };
 }
 
+/** The sidebar streak card, from the progress summary so it's counted in your time zone and stays current. */
 export function StreakCard({ user, className }: StreakCardProps) {
-  const { days, studiedToday, week } = streakView(user, new Date());
+  const summary = useProgressSummary();
+  const classes = className ? `${styles.streak} ${className}` : styles.streak;
+
+  if (summary.isPending) {
+    return (
+      <div className={classes}>
+        <span className="sr-only" role="status">
+          Loading your streak
+        </span>
+        <div className={styles.top} aria-hidden="true">
+          <span className={styles.flame}>
+            <Icon name="flame" />
+          </span>
+          <Skeleton width="60%" />
+        </div>
+        <Skeleton width="85%" height={12} className={styles.noteSkeleton} />
+        <Skeleton height={5} radius={3} />
+      </div>
+    );
+  }
+
+  const { days, studiedToday, week } = streakView(summary.data?.streak ?? streakFromUser(user, new Date()));
   const { title, note } = streakCopy(days, studiedToday);
   return (
-    <div className={className ? `${styles.streak} ${className}` : styles.streak}>
+    <div className={classes}>
       <div className={styles.top}>
         <span className={styles.flame}>
           <Icon name="flame" />

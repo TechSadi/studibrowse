@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LatestSessionResponse } from '@studibrowse/shared';
-import { formatGoal, summaryView } from './sessionSummary';
+import { summaryView } from './sessionSummary';
 
 const data: LatestSessionResponse = {
   session: {
@@ -10,8 +10,10 @@ const data: LatestSessionResponse = {
     endedAt: null,
     focusedMins: 100,
     roundsCompleted: 2,
+    roundsTotal: 4,
     goalsDone: 2,
     goalsTotal: 4,
+    peopleCount: 3,
   },
   roomOpen: true,
   week: { focusMins: 620, goalMins: 720 },
@@ -48,12 +50,5 @@ describe('summaryView', () => {
   it('goes past 100% and copes with no goal', () => {
     expect(summaryView({ ...data, week: { focusMins: 900, goalMins: 600 } }, []).weeklyPercent).toBe('150%');
     expect(summaryView({ ...data, week: { focusMins: 30, goalMins: 0 } }, []).weeklyPercent).toBe('0%');
-  });
-});
-
-describe('formatGoal', () => {
-  it('drops the minutes on whole hours', () => {
-    expect(formatGoal(720)).toBe('12h');
-    expect(formatGoal(90)).toBe('1h 30m');
   });
 });
