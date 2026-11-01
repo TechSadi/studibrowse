@@ -1,13 +1,19 @@
 import type {
   ApiErrorBody,
   AuthResponse,
+  CreateRoomInput,
+  CreateRoomResponse,
   FollowingResponse,
   ForgotPasswordInput,
   ForgotPasswordResponse,
   GoogleAuthInput,
+  InvitePreviewResponse,
   LoginInput,
   MeResponse,
+  PublicRoomsQuery,
+  PublicRoomsResponse,
   ResetPasswordInput,
+  RoomResponse,
   SignupInput,
   SuggestionsResponse,
   UpdateMeInput,
@@ -167,4 +173,24 @@ export const usersApi = {
     request<MeResponse>('POST', `/api/users/${encodeURIComponent(userId)}/follow`, { auth: true }),
   unfollow: (userId: string) =>
     request<MeResponse>('DELETE', `/api/users/${encodeURIComponent(userId)}/follow`, { auth: true }),
+};
+
+function queryString(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') search.set(key, String(value));
+  }
+  const text = search.toString();
+  return text ? `?${text}` : '';
+}
+
+export const roomsApi = {
+  create: (input: CreateRoomInput) =>
+    request<CreateRoomResponse>('POST', '/api/rooms', { body: input, auth: true }),
+  listPublic: (query: Partial<PublicRoomsQuery> = {}) =>
+    request<PublicRoomsResponse>('GET', `/api/rooms/public${queryString(query)}`, { auth: true }),
+  get: (roomId: string) =>
+    request<RoomResponse>('GET', `/api/rooms/${encodeURIComponent(roomId)}`, { auth: true }),
+  invite: (code: string) =>
+    request<InvitePreviewResponse>('GET', `/api/rooms/invite/${encodeURIComponent(code)}`),
 };

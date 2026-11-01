@@ -1,5 +1,4 @@
-// The server makes invite codes once room creation lands; until then accept any URL-safe code.
-const CODE_PATTERN = /^[A-Za-z0-9_-]{4,64}$/;
+import { INVITE_CODE_PATTERN } from '@studibrowse/shared';
 
 /**
  * Reads what someone pasted into the join box: a full invite URL (`https://…/r/<code>`), a path
@@ -10,5 +9,5 @@ export function parseInviteInput(input: string): string | null {
   if (!text) return null;
   const fromPath = /(?:^|\/)r\/([^/?#\s]+)\/?(?:[?#].*)?$/.exec(text)?.[1];
   const code = fromPath ?? text;
-  return CODE_PATTERN.test(code) ? code : null;
+  return INVITE_CODE_PATTERN.test(code) ? code : null;
 }

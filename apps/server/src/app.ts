@@ -9,6 +9,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import { createGoogleVerifier, type GoogleVerifier } from './modules/auth/google';
 import { createHealthRouter } from './modules/health/health.routes';
+import { createRoomsRouter } from './modules/rooms/rooms.routes';
 import { createUsersRouter } from './modules/users/users.routes';
 
 /** The API only takes small JSON bodies; file uploads will use their own multipart route. */
@@ -43,6 +44,7 @@ export function createApp({
   // The password, email and Google endpoints are rate limited inside the router.
   app.use('/api/auth', createAuthRouter({ emailService, verifyGoogleToken }));
   app.use('/api/users', createUsersRouter());
+  app.use('/api/rooms', createRoomsRouter());
 
   app.use(notFoundHandler);
   app.use(errorHandler);

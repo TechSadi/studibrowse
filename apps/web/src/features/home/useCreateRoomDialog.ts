@@ -5,7 +5,7 @@ export const CREATE_ROOM_PATH = '/home?create=1';
 
 /**
  * Whether the Create a room dialog is open, kept in the URL (`/home?create=1`) so the phone tab bar
- * can open it from any page. The dialog itself arrives with room creation.
+ * can open it from any page. HomePage renders the dialog while the flag is set.
  */
 export function useCreateRoomDialog() {
   const [flag, setFlag] = useSearchParam('create');

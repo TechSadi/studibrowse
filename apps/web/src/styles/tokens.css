@@ -26,6 +26,9 @@
   --good-soft: rgba(85, 201, 147, 0.12);
   --away: #5f716a;
   --danger: #f07a7a;
+  /* Badge outlines and the "Room is full" count. The mockup keeps these the same in both themes. */
+  --good-line: rgba(85, 201, 147, 0.22);
+  --danger-soft: rgba(240, 122, 122, 0.12);
   --av1: #173a30;
   --av1i: #8fdcbf;
   --av2: #3a2c16;

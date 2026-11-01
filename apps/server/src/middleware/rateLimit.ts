@@ -10,6 +10,9 @@ export const LOGIN_ACCOUNT_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 10 };
 /** Reset emails per address per window. Leaves room for the "Send again" button. */
 export const FORGOT_ACCOUNT_RATE_LIMIT = { windowMs: 60 * 60 * 1000, limit: 3 };
 
+/** Invite previews per IP per window: plenty for real links, far too few to guess codes. */
+export const INVITE_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 60 };
+
 export interface RateLimitOptions {
   windowMs: number;
   limit: number;

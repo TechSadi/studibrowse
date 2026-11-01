@@ -38,17 +38,6 @@ export function ProfilePage() {
   );
 }
 
-export function RoomPage() {
-  return (
-    <PlaceholderScreen title="Focus room">
-      <p>Focus rooms are coming next.</p>
-      <Link className="text-link" to="/home">
-        Back to Home
-      </Link>
-    </PlaceholderScreen>
-  );
-}
-
 export function InvitePage() {
   return (
     <PlaceholderScreen title="Room invite">

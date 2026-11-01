@@ -128,6 +128,25 @@ Because each refresh token works exactly once, two tabs refreshing with the same
 - **Reset links:** the page reads the token from the URL fragment (`#token=…`) and then removes it from the address bar.
 - **Google sign-in:** the web app renders Google's own button with Google Identity Services, with the same `GOOGLE_CLIENT_ID` from the repo-root `.env`: `vite.config.ts` passes it to the browser as `VITE_GOOGLE_CLIENT_ID` (a client id is public), unless `VITE_GOOGLE_CLIENT_ID` is set to override it. Only `src/lib/config.ts` reads it. Without a client id the button shows as unavailable.
 
+## Rooms (`modules/rooms/`)
+
+Endpoints (all bodies, queries and params are validated with the shared zod schemas in `packages/shared/src/schemas/rooms.ts`):
+
+| Endpoint | Auth | What it does |
+| --- | --- | --- |
+| `POST /api/rooms` | signed in | `createRoomSchema`: name (≤ 60), subject (optional, ≤ 40), description (optional, ≤ 200), `isPublic`, `maxSize` 2 to 20, up to 10 goals (≤ 80 each), `timerSettings` (the `TIMER_LIMITS` ranges, plus `autoStart`). The creator becomes the host. Answers 201 with the `RoomDetail`. |
+| `GET /api/rooms/public` | signed in | Rooms worth joining. `page` (9 per page, `nextPage` is null on the last), `subject` (exact, any case), `q` (name or subject contains, plain text), `filter` = `all`, `open` (has space), `focus` or `break`. |
+| `GET /api/rooms/:id` | signed in | One room. |
+| `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview: name, subject, host, member count, size, timer and goal texts. No ids or codes. 404 `ROOM_NOT_FOUND`, 410 `ROOM_CLOSED`. |
+
+- **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts paused at a full first focus round: `{ phase: 'focus', round: 1, endsAt: null, pausedRemaining: focusMins }`.
+- **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission.
+- **Order:** rooms hosted by people you follow first, then newest (`$addFields hostFollowed` in an aggregation, with the host joined by `$lookup`). Rooms whose host account is gone are left out.
+- **Phase filters** count only running timers: a paused or not-yet-started room is neither "In a focus round" nor "On a break".
+- **Invite codes:** `nanoid(10)` (URL-safe alphabet, cryptographic randomness, 64^10 codes), unique index, retried on the rare collision. `INVITE_CODE_PATTERN` in shared is the one definition of a valid code; the Home join box uses it too.
+- **Member counts** come from the in-memory presence store (`realtime/presence.ts`). Until sockets join rooms, every room reports 0. "Has space" leaves out `fullRoomIds()` in the database query, so paging stays correct.
+- **Web:** `roomsApi` in `lib/api.ts`. `features/rooms/CreateRoomDialog.tsx` (rendered by Home while `?create=1` is set, starting from your timer defaults) creates the room, seeds the `['rooms', id]` query and opens `/room/:id`. That route is a placeholder (`RoomPlaceholderPage`) that shows the invite link with a copy button until the focus room arrives. `features/home/LiveRooms.tsx` loads pages with `useInfiniteQuery` keyed by filter, `q` and `?subject=` (a card's subject tag sets it). `features/rooms/timerText.ts` works out a card's "N min left" from `endsAt`, and the cards redraw every 30 seconds. `components/ui/Modal.tsx` is the shared dialog: Escape and backdrop close it, Tab stays inside, and focus returns to the opener.
+
 ## Timer: the server owns it
 
 A room stores `timer { phase, round, endsAt, pausedRemaining }`. `phase` is `focus`, `shortBreak` or `longBreak`.

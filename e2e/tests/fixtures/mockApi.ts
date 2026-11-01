@@ -4,6 +4,8 @@ import type {
   AuthResponse,
   FollowedUser,
   PublicUser,
+  RoomDetail,
+  RoomSummary,
   SuggestedUser,
 } from '@studibrowse/shared';
 
@@ -45,8 +47,33 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
   };
 }
 
+/** A room in the mock: the detail the host sees. Strangers get the same shape (the mock doesn't hide codes). */
+export function makeRoom(host: PublicUser, overrides: Partial<RoomDetail> = {}): RoomDetail {
+  return {
+    id: `room-${Math.random().toString(36).slice(2, 8)}`,
+    name: 'Finals week focus',
+    subject: 'Maths',
+    description: '',
+    host: { id: host.id, name: host.name, username: host.username, avatarColor: host.avatarColor },
+    isPublic: true,
+    maxSize: 20,
+    memberCount: 0,
+    timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+    timerSettings: { ...host.timerDefaults, autoStart: true },
+    goals: [],
+    inviteCode: 'aB3xK9_q-2',
+    isHost: false,
+    totalSessions: 0,
+    totalFocusMins: 0,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 export class MockApi {
   accounts: MockAccount[] = [];
+  /** Newest first, like the server's list. */
+  rooms: RoomDetail[] = [];
   sessionUserId: string | null = null;
   /** Request bodies by endpoint, e.g. calls.login[0]. */
   calls: Record<string, unknown[]> = {};
@@ -176,7 +203,39 @@ export class MockApi {
         });
         return { status: 200, json: { users } };
       }
+      case 'GET /api/rooms/public': {
+        const me = this.currentAccount();
+        if (!me) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const rooms: RoomSummary[] = this.rooms
+          .filter((room) => room.isPublic)
+          .map((room) => {
+            const { description: _d, goals: _g, inviteCode: _c, isHost: _h, ...summary } = room;
+            const { totalSessions: _s, totalFocusMins: _f, createdAt: _a, ...card } = summary;
+            return { ...card, hostFollowed: me.user.following.includes(room.host.id) };
+          })
+          .sort((a, b) => Number(b.hostFollowed) - Number(a.hostFollowed));
+        return { status: 200, json: { rooms, nextPage: null } };
+      }
+      case 'POST /api/rooms': {
+        this.record('createRoom', body);
+        const me = this.currentAccount();
+        if (!me) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const room = makeRoom(me.user, {
+          ...(body as Partial<RoomDetail>),
+          id: `room-${this.rooms.length + 1}`,
+          isHost: true,
+        });
+        this.rooms.unshift(room);
+        return { status: 201, json: { room } };
+      }
       default: {
+        const roomId = url.pathname.match(/^\/api\/rooms\/([^/]+)$/)?.[1];
+        if (roomId && method === 'GET') {
+          const room = this.rooms.find((r) => r.id === roomId);
+          return room
+            ? { status: 200, json: { room } }
+            : error(404, 'ROOM_NOT_FOUND', 'We couldn’t find that room. Check the link and try again.');
+        }
         const followId = url.pathname.match(/^\/api\/users\/([^/]+)\/follow$/)?.[1];
         if (followId && method === 'POST') {
           this.record('follow', followId);

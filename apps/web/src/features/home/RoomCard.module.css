@@ -1,0 +1,239 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  padding: 24px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition:
+    border-color 0.2s,
+    transform 0.2s,
+    background 0.2s;
+}
+
+.card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+  background: var(--surface-2);
+}
+
+.followed {
+  background: linear-gradient(180deg, rgb(var(--glow-accent) / 0.07), transparent 60%), var(--surface);
+  border-color: rgb(var(--glow-accent) / 0.28);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.subj {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  flex: none;
+}
+
+.c1 {
+  background: var(--av1);
+  color: var(--av1i);
+}
+.c2 {
+  background: var(--av2);
+  color: var(--av2i);
+}
+.c3 {
+  background: var(--av3);
+  color: var(--av3i);
+}
+.c4 {
+  background: var(--av4);
+  color: var(--av4i);
+}
+.c5 {
+  background: var(--av5);
+  color: var(--av5i);
+}
+.c6 {
+  background: var(--av6);
+  color: var(--av6i);
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.liveTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--good);
+  background: var(--good-soft);
+  border: 1px solid var(--good-line);
+  padding: 4px 10px 4px 9px;
+  border-radius: 99px;
+}
+
+.liveDot {
+  width: 7px;
+  height: 7px;
+}
+
+.cap {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--surface-3);
+  padding: 4px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.full {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.followedLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.followedLabel :global(.i) {
+  width: 14px;
+  height: 14px;
+}
+
+.title {
+  font-size: 19px;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.tag {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+
+.tag:hover {
+  color: var(--ink);
+  background: var(--line-strong);
+}
+
+.phase {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+}
+
+.phase b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.phase small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.miniRing {
+  width: 36px;
+  height: 36px;
+  flex: none;
+}
+
+.miniRing circle {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.miniRing .ringTrack {
+  stroke: rgb(var(--wash) / 0.08);
+}
+
+.ringFocus {
+  stroke: var(--accent);
+}
+
+.ringBreak {
+  stroke: var(--violet);
+}
+
+.ringIdle {
+  stroke: var(--faint);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.studying {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.studying b {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.skeleton {
+  min-height: 268px;
+  background: var(--surface-2);
+}
+
+.skeleton:hover {
+  transform: none;
+  border-color: var(--line);
+}
+
+@media (max-width: 767px) {
+  .card {
+    padding: 20px;
+  }
+}

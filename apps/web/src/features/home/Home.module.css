@@ -488,6 +488,25 @@
   gap: 20px;
 }
 
+.subjectChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.subjectChip :global(.i) {
+  width: 14px;
+  height: 14px;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);

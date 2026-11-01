@@ -1,4 +1,26 @@
 export const MAX_ROOM_SIZE = 20;
+export const MIN_ROOM_SIZE = 2;
+/** Where the Create a room size slider starts. */
+export const DEFAULT_ROOM_SIZE = 10;
+
+export const ROOM_NAME_MAX = 60;
+export const ROOM_SUBJECT_MAX = 40;
+export const ROOM_DESCRIPTION_MAX = 200;
+export const GOAL_TEXT_MAX = 80;
+
+/** Invite codes are nanoid's URL-safe alphabet: 64^10 codes, so they can't be guessed. */
+export const INVITE_CODE_LENGTH = 10;
+export const INVITE_CODE_PATTERN = /^[A-Za-z0-9_-]{10}$/;
+
+/** Rooms worth joining loads 3 rows of 3 at a time. */
+export const PUBLIC_ROOMS_PAGE_SIZE = 9;
+
+export const TIMER_PHASES = ['focus', 'shortBreak', 'longBreak'] as const;
+export type TimerPhase = (typeof TIMER_PHASES)[number];
+
+/** The Home room filters, in mockup order. */
+export const ROOM_FILTERS = ['all', 'open', 'focus', 'break'] as const;
+export type RoomFilter = (typeof ROOM_FILTERS)[number];
 
 /** How long an empty room stays open, so a refresh or dropped connection doesn't end it. */
 export const ROOM_GRACE_MS = 5 * 60 * 1000;
