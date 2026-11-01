@@ -90,6 +90,7 @@ function roomDetail(changes: Partial<RoomDetail> = {}): RoomDetail {
     isPublic: true,
     maxSize: 20,
     memberCount: 2,
+    isLive: true,
     timer: { phase: 'idle', round: 0, endsAt: null, pausedRemaining: null },
     timerSettings: {
       focusMins: 25,

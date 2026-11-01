@@ -95,16 +95,21 @@ export async function markUnoccupiedRoomsEmpty(now = new Date()): Promise<void> 
 export function startRoomCleanup({
   storage,
   finalizeRun,
+  onClosed,
   intervalMs = ROOM_CLEANUP_INTERVAL_MS,
 }: {
   storage: StorageService;
   finalizeRun?: FinalizeRun;
+  /** Called with the ids each run closed, so the lobby can take their cards down. */
+  onClosed?: (roomIds: string[]) => void;
   intervalMs?: number;
 }): () => void {
   const run = () =>
-    closeEmptyRooms(storage, new Date(), finalizeRun).catch((err: unknown) =>
-      logger.error({ err }, '[rooms] cleanup failed'),
-    );
+    closeEmptyRooms(storage, new Date(), finalizeRun)
+      .then((closed) => {
+        if (closed.length > 0) onClosed?.(closed);
+      })
+      .catch((err: unknown) => logger.error({ err }, '[rooms] cleanup failed'));
   markUnoccupiedRoomsEmpty().catch((err: unknown) =>
     logger.error({ err }, '[rooms] failed to mark unoccupied rooms empty'),
   );

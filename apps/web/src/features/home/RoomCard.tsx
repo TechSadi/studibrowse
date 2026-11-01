@@ -37,15 +37,19 @@ interface RoomCardProps {
   now: number;
   /** Filters the list to this room's subject. */
   onSubject: (subject: string) => void;
+  /** The room arrived live after the list was first shown, so it fades in. */
+  entering?: boolean;
 }
 
 /** A live room in Rooms worth joining (mockup `.room-card`). */
-export function RoomCard({ room, now, onSubject }: RoomCardProps) {
+export function RoomCard({ room, now, onSubject, entering = false }: RoomCardProps) {
   const full = room.memberCount >= room.maxSize;
   const phase = phaseView(room.timer, room.timerSettings, now);
   const tone = avatarTone(room.host.avatarColor);
   const hostFirstName = room.host.name.trim().split(/\s+/)[0] ?? room.host.name;
-  const className = room.hostFollowed ? `${styles.card} ${styles.followed}` : styles.card;
+  const className = [styles.card, room.hostFollowed && styles.followed, entering && styles.enter]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <article className={className} aria-label={room.name}>
@@ -55,10 +59,12 @@ export function RoomCard({ room, now, onSubject }: RoomCardProps) {
             {initialsOf(room.subject || room.name)}
           </span>
           <div className={styles.badges}>
-            <span className={styles.liveTag}>
-              <LiveDot className={styles.liveDot} />
-              Live
-            </span>
+            {room.isLive ? (
+              <span className={styles.liveTag}>
+                <LiveDot className={styles.liveDot} />
+                Live
+              </span>
+            ) : null}
             <span
               className={full ? `${styles.cap} ${styles.full}` : styles.cap}
               aria-label={`${room.memberCount} of ${room.maxSize} people`}

@@ -144,14 +144,17 @@ describe('GET /api/rooms/public', () => {
       subject: 'Maths',
       maxSize: 10,
       memberCount: 0,
+      isLive: false,
       hostFollowed: false,
       host: { id: user.id },
     });
     expect(Object.keys(card).sort()).toEqual(
       [
+        'createdAt',
         'host',
         'hostFollowed',
         'id',
+        'isLive',
         'isPublic',
         'maxSize',
         'memberCount',

@@ -23,6 +23,7 @@ import {
   type LoggedSession,
 } from '../modules/sessions/sessions.service';
 import { broadcastPresence } from './broadcast';
+import { broadcastRoomCard } from './lobby';
 import { applyPhaseStatus, drainFocus, setFocusRunning } from './presence';
 import { advanceSteps, isPaused, pause, reset, resume, skip, start, type TimerState } from './timer';
 import { roomChannel, type TypedServer } from './types';
@@ -109,6 +110,8 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
     const channel = io.to(roomChannel(roomId));
     channel.emit('timer:state', { roomId, timer: toRoomTimer(timer), serverNow: now().getTime() });
     if (logged) channel.emit('session:logged', { roomId, ...logged });
+    // Every change, not just new phases: a pause changes the card's text and the focus and break filters.
+    broadcastRoomCard(io, roomId);
   }
 
   /** Saves the outcome, logging the run first if it ended. */

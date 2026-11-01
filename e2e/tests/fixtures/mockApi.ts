@@ -98,6 +98,7 @@ export function makeRoom(host: PublicUser, overrides: Partial<RoomDetail> = {}):
     isPublic: true,
     maxSize: 20,
     memberCount: 0,
+    isLive: (overrides.memberCount ?? 0) > 0,
     timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
     timerSettings: { ...host.timerDefaults, autoStart: true },
     goals: [],
@@ -270,7 +271,7 @@ export class MockApi {
           .filter((room) => room.isPublic)
           .map((room) => {
             const { description: _d, goals: _g, inviteCode: _c, isHost: _h, ...summary } = room;
-            const { totalSessions: _s, totalFocusMins: _f, createdAt: _a, ...card } = summary;
+            const { totalSessions: _s, totalFocusMins: _f, ...card } = summary;
             return { ...card, hostFollowed: me.user.following.includes(room.host.id) };
           })
           .sort((a, b) => Number(b.hostFollowed) - Number(a.hostFollowed));

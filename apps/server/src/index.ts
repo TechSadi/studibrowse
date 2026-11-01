@@ -8,17 +8,25 @@ import { logger } from './lib/logger';
 import { createStorageService } from './lib/storage';
 import { createChatHandlers } from './realtime/handlers/chat.handlers';
 import { createGoalHandlers } from './realtime/handlers/goal.handlers';
+import { createLobbyHandlers } from './realtime/handlers/lobby.handlers';
 import { createResourceHandlers } from './realtime/handlers/resource.handlers';
 import { createRoomHandlers } from './realtime/handlers/room.handlers';
 import { createSettingsHandlers } from './realtime/handlers/settings.handlers';
 import { createTimerHandlers } from './realtime/handlers/timer.handlers';
 import { createIo } from './realtime/io';
+import { broadcastRoomCard, resetLobby } from './realtime/lobby';
 import { createRoomTimer } from './realtime/roomTimer';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const storage = createStorageService(env);
-const app = createApp({ isDatabaseConnected, clientOrigin: env.CLIENT_ORIGIN, storage });
+const app = createApp({
+  isDatabaseConnected,
+  clientOrigin: env.CLIENT_ORIGIN,
+  storage,
+  // Only called for requests, which can't arrive before io exists.
+  onRoomCreated: (roomId) => broadcastRoomCard(io, roomId),
+});
 const httpServer = createServer(app);
 const roomTimer = createRoomTimer();
 const roomHandlers = createRoomHandlers({ onDepart: roomTimer.memberLeaving });
@@ -31,6 +39,7 @@ const io = createIo(httpServer, {
     createGoalHandlers(),
     createResourceHandlers(storage),
     createSettingsHandlers(),
+    createLobbyHandlers(),
   ],
 });
 
@@ -40,7 +49,12 @@ httpServer.listen(env.PORT, () => {
 let stopRoomCleanup: (() => void) | undefined;
 // The first connection only: Mongoose reconnects by itself after that.
 mongoose.connection.once('connected', () => {
-  stopRoomCleanup = startRoomCleanup({ storage, finalizeRun: roomTimer.finalizeOnClose });
+  stopRoomCleanup = startRoomCleanup({
+    storage,
+    finalizeRun: roomTimer.finalizeOnClose,
+    // Each one reads as closed and becomes rooms:remove; private ones stay out of the lobby.
+    onClosed: (roomIds) => roomIds.forEach((roomId) => broadcastRoomCard(io, roomId)),
+  });
   // Timers keep running in the database while the server is down; pick them up again.
   roomTimer
     .restore(io)
@@ -70,6 +84,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     stopRoomCleanup?.();
     roomHandlers.dispose();
     roomTimer.dispose();
+    resetLobby();
     // Closes every socket and the underlying HTTP server.
     await io.close();
     await disconnectFromDatabase();

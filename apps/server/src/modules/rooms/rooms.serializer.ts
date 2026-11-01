@@ -84,8 +84,10 @@ export function toRoomSummary(
     isPublic: room.isPublic,
     maxSize: room.maxSize,
     memberCount,
+    isLive: memberCount > 0,
     timer: toRoomTimer(room.timer),
     timerSettings: toTimerSettings(room.timerSettings),
+    createdAt: room.createdAt.toISOString(),
     hostFollowed,
   };
 }
@@ -110,7 +112,6 @@ export function toRoomDetail(
     isHost,
     totalSessions: room.totalSessions,
     totalFocusMins: room.totalFocusMins,
-    createdAt: room.createdAt.toISOString(),
   };
 }
 
