@@ -11,6 +11,7 @@ import {
 } from '../../modules/rooms/rooms.service';
 import { broadcastPresence } from '../broadcast';
 import { onEvent } from '../handler';
+import { broadcastRoomCard } from '../lobby';
 import {
   addSocket,
   getHostId,
@@ -76,6 +77,8 @@ export function createRoomHandlers({
     if (nextHost) setHost(roomId, nextHost);
     broadcastPresence(io, roomId);
     if (nextHost) await setRoomHost(roomId, nextHost);
+    // After the new host is saved, so the card shows them.
+    broadcastRoomCard(io, roomId);
   }
 
   /** One socket is out of the room. If it was the last one anywhere, the grace period starts. */
@@ -107,6 +110,8 @@ export function createRoomHandlers({
       if (wasEmpty) await markRoomOccupied(roomId);
       const snapshot = await getRoomSnapshot(joinable, userId);
       broadcastPresence(io, roomId);
+      // Another tab of someone already here doesn't change the card.
+      if (outcome === 'joined') broadcastRoomCard(io, roomId);
       return { ...snapshot, members: listMembers(roomId), serverNow: now().getTime() };
     });
 

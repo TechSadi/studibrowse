@@ -56,6 +56,10 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 | `host:transfer` | client → server | `{ roomId, userId }` | Host | Ack data: `{}`. Room gets `presence:update` |
 | `member:remove` | client → server | `{ roomId, userId }` | Host (not themselves) | Ack data: `{}`. The removed member's sockets leave the room. Room gets `presence:update` |
 | `session:logged` | server → room | `{ roomId, session: { id, roundsCompleted, goalsDone, participants }, totalSessions, totalFocusMins }`. `participants` is how many people focused at least a minute; the totals are the room's after this session | Server only. Sent right after the `timer:state` that ends a run: the last round finishing (on its own or skipped) or `timer:reset`. Not sent for a run where nobody focused a minute | n/a |
+| `lobby:subscribe` | client → server | `{}` | Any signed-in user | Ack data: `{}`. The socket joins `lobby` and gets `rooms:upsert` and `rooms:remove` from now on. Sent by pages that list public rooms (Home), again after every reconnect |
+| `lobby:unsubscribe` | client → server | `{}` | Any signed-in user | Ack data: `{}`. The socket leaves `lobby` |
+| `rooms:upsert` | server → `lobby` | `{ room: { id, name, subject, host: { id, name, username, avatarColor }, isPublic, maxSize, memberCount, isLive, timer: { phase, round, endsAt, pausedRemaining }, timerSettings, createdAt } }`, a `LobbyRoomCard` (the `RoomSummary` of `GET /api/rooms/public` without `hostFollowed`, which each client works out from who it follows). `isLive` is `memberCount > 0` | Server only. A public, open room was created or its card changed. At most one per room per second | n/a. Clients add the room, or update it in place |
+| `rooms:remove` | server → `lobby` | `{ roomId }` | Server only. A public room closed, or its host made it private | n/a. Clients drop the card |
 | `notification:new` | server → `user:<id>` | `{ notification: { id, type, roomId, text, read, createdAt } }`, where `type` is `roomStarted`, `roomFull`, `memberJoined` or `roundEnded` | Server only | n/a. Also saved to `notifications` |
 
 **Timer commands.** Every `timer:*` command checks, in order, that this socket joined the room (`NOT_A_MEMBER`) and that the sender is the room's current host (`NOT_HOST`), on every call. Then `ROOM_CLOSED` if the room has closed, and `INVALID_TIMER_COMMAND` if the command doesn't fit the timer (for example `timer:pause` while idle). A refused command changes nothing and sends no `timer:state`. When the phase changes, everyone's status follows it (focus → Focusing, anything else → Break; Away is left alone) and the room gets `presence:update` before `timer:state`. Clients draw the countdown as `endsAt - (Date.now() + clockOffset)`, where `clockOffset = serverNow - Date.now()` when the state arrived; the server never sends ticks.
@@ -65,6 +69,23 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 `goal:add`, `goal:toggle` and `goal:remove` are each limited to 10 per 5 seconds per socket (`GOAL_RATE_LIMIT`). `resource:add` and `resource:remove` are each limited to 5 per 10 seconds per socket (`RESOURCE_RATE_LIMIT`).
 
 Rate limits are per socket (so per tab), in memory, and live in `apps/server/src/realtime/socketRateLimit.ts`. The wrapper applies them to every handler for those events.
+
+## Lobby
+
+The lobby is the Socket.IO room `lobby`: everyone looking at a list of public rooms. `apps/server/src/realtime/lobby.ts` is the only thing that sends to it: `broadcastRoomCard(io, roomId)` runs whenever something on a card changes:
+
+- a room is created (`POST /api/rooms`)
+- someone new joins
+- someone leaves for good (`room:leave`, or their reconnect window ends), with any host handover that follows
+- the host saves Room settings
+- any `timer:state` (a pause changes the card's text and the focus and break filters)
+- the cleanup job closes the room
+
+Each send reads the room at that moment and sends `rooms:upsert` for an open public room, `rooms:remove` for a closed public one, and nothing for a private room, so **private rooms never reach the lobby**. A room going private sends `rooms:remove` at once (`removeRoomCard`).
+
+Bursts are coalesced: **at most one `rooms:upsert` per room per second**. The first change is sent straight away; later changes inside that second become one send at the end of it, carrying the card as it is then.
+
+The lobby isn't kept across a reconnect (the server sees a new socket), so the web client sends `lobby:subscribe` again on every connect and refetches the list once (`GET /api/rooms/public`) to pick up anything it missed while offline.
 
 ## Not covered by the spec yet
 

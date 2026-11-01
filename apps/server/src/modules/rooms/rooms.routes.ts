@@ -11,10 +11,17 @@ import { createAuthRateLimiter, INVITE_RATE_LIMIT, UPLOAD_SIGN_RATE_LIMIT } from
 import { requireAuth } from '../../middleware/requireAuth';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate';
 import { createUploadsController } from '../resources/uploads.controller';
-import * as controller from './rooms.controller';
+import { createRoomsController } from './rooms.controller';
 
-export function createRoomsRouter({ storage }: { storage: StorageService }): Router {
+export function createRoomsRouter({
+  storage,
+  onRoomCreated,
+}: {
+  storage: StorageService;
+  onRoomCreated?: (roomId: string) => void;
+}): Router {
   const router = Router();
+  const controller = createRoomsController({ onRoomCreated });
   const uploads = createUploadsController(storage);
   router.post('/', requireAuth, validateBody(createRoomSchema), controller.create);
   router.get('/public', requireAuth, validateQuery(publicRoomsQuerySchema), controller.listPublic);

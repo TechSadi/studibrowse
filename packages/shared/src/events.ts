@@ -11,7 +11,7 @@ import {
 } from './constants';
 import { goalTextSchema, objectIdSchema, roomSettingsSchema } from './schemas/rooms';
 import { fileNameSchema, fileSizeSchema } from './schemas/uploads';
-import type { RoomDetail, RoomGoal, RoomTimer, TimerSettings } from './types/api';
+import type { LobbyRoomCard, RoomDetail, RoomGoal, RoomTimer, TimerSettings } from './types/api';
 import type {
   AppNotification,
   ChatMessage,
@@ -121,6 +121,10 @@ export const resourceRemoveSchema = z.strictObject({ roomId, resourceId });
 export const hostTransferSchema = z.strictObject({ roomId, userId });
 export const memberRemoveSchema = hostTransferSchema;
 
+/** Join or leave the lobby: the live list of public rooms on Home. No fields. */
+export const lobbySubscribeSchema = z.strictObject({});
+export const lobbyUnsubscribeSchema = lobbySubscribeSchema;
+
 // ---- Event maps ----
 
 type WithAck<Schema extends z.ZodType, Data> = (payload: z.input<Schema>, ack: AckCallback<Data>) => void;
@@ -172,6 +176,8 @@ export interface ClientToServerEvents {
   'resource:remove': WithAck<typeof resourceRemoveSchema, EmptyData>;
   'host:transfer': WithAck<typeof hostTransferSchema, EmptyData>;
   'member:remove': WithAck<typeof memberRemoveSchema, EmptyData>;
+  'lobby:subscribe': WithAck<typeof lobbySubscribeSchema, EmptyData>;
+  'lobby:unsubscribe': WithAck<typeof lobbyUnsubscribeSchema, EmptyData>;
 }
 
 export interface ServerToClientEvents {
@@ -192,6 +198,10 @@ export interface ServerToClientEvents {
     totalFocusMins: number;
   }) => void;
   'notification:new': (payload: { notification: AppNotification }) => void;
+  /** To the lobby: a public room opened or its card changed. At most one per room per second. */
+  'rooms:upsert': (payload: { room: LobbyRoomCard }) => void;
+  /** To the lobby: a room closed or went private. */
+  'rooms:remove': (payload: { roomId: string }) => void;
 }
 
 /** What the server stores on each socket after the handshake. */
@@ -218,6 +228,8 @@ export const clientEventSchemas = {
   'resource:remove': resourceRemoveSchema,
   'host:transfer': hostTransferSchema,
   'member:remove': memberRemoveSchema,
+  'lobby:subscribe': lobbySubscribeSchema,
+  'lobby:unsubscribe': lobbyUnsubscribeSchema,
 } as const satisfies Record<keyof ClientToServerEvents, z.ZodType>;
 
 export type ClientEventName = keyof ClientToServerEvents;

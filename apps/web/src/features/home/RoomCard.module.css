@@ -13,6 +13,19 @@
     background 0.2s;
 }
 
+/* A room that opened while you were looking. Without motion it simply appears. */
+@media (prefers-reduced-motion: no-preference) {
+  .enter {
+    animation: card-enter 0.32s ease-out;
+  }
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+  }
+}
+
 .card:hover {
   border-color: var(--line-strong);
   transform: translateY(-2px);

@@ -5,6 +5,7 @@ import {
   type AvatarColor,
   type CreateRoomData,
   type InvitePreviewResponse,
+  type LobbyRoomCard,
   type PublicRoomsQuery,
   type PublicRoomsResponse,
   type RoomDetail,
@@ -139,6 +140,26 @@ export async function listPublicRooms(userId: string, query: PublicRoomsQuery): 
   return { rooms, nextPage: rows.length > PUBLIC_ROOMS_PAGE_SIZE ? query.page + 1 : null };
 }
 
+/** What the lobby should do about a room: show its card, take it down (closed), or say nothing (private). */
+export type RoomCardState = { kind: 'listed'; card: LobbyRoomCard } | { kind: 'closed' } | { kind: 'hidden' };
+
+/**
+ * A room's card for the lobby, as it is right now. Private rooms are always `hidden`, closed or not, so
+ * nothing about them reaches the lobby. A room whose host account is gone is hidden, as in listPublicRooms.
+ */
+export async function loadRoomCard(roomId: string): Promise<RoomCardState> {
+  const room = await Room.findById(roomId).lean<RoomRecord>();
+  if (!room?.isPublic) return { kind: 'hidden' };
+  if (room.closedAt) return { kind: 'closed' };
+  const host = await User.findById(room.hostId, HOST_FIELDS).lean<HostRecord>();
+  if (!host) return { kind: 'hidden' };
+  const { hostFollowed: _, ...card } = toRoomSummary(room, host, {
+    memberCount: countMembers(roomId),
+    hostFollowed: false,
+  });
+  return { kind: 'listed', card };
+}
+
 /** A private room is visible to its host and to the people in it. */
 export async function getRoom(userId: string, roomId: string): Promise<RoomDetail> {
   const room = await Room.findById(roomId).lean<RoomRecord>();
@@ -259,6 +280,8 @@ export async function setRoomHost(roomId: string, hostId: string): Promise<void>
 
 export interface RoomSettingsResult {
   settings: RoomSettingsUpdate;
+  /** Whether the room was public before this change, so the lobby can take down one that went private. */
+  wasPublic: boolean;
   goals: RoomGoal[];
   goalsChanged: boolean;
 }
@@ -301,5 +324,5 @@ export async function updateRoomSettings(
     timerSettings: data.timerSettings,
   };
   await Room.updateOne({ _id: roomId, closedAt: null }, { ...settings, goals });
-  return { settings, goals: goals.map(toRoomGoal), goalsChanged };
+  return { settings, wasPublic: room.isPublic, goals: goals.map(toRoomGoal), goalsChanged };
 }

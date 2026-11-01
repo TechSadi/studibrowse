@@ -36,8 +36,10 @@ function makeRoom(overrides: Partial<RoomSummary> = {}): RoomSummary {
     isPublic: true,
     maxSize: 20,
     memberCount: 14,
+    isLive: (overrides.memberCount ?? 14) > 0,
     timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
     timerSettings,
+    createdAt: '2026-11-01T09:00:00.000Z',
     hostFollowed: false,
     ...overrides,
   };
@@ -54,7 +56,6 @@ function createdRoom(body: { name: string; isPublic: boolean }): RoomDetail {
     isHost: true,
     totalSessions: 0,
     totalFocusMins: 0,
-    createdAt: '2026-11-01T10:00:00.000Z',
   };
 }
 
@@ -272,6 +273,16 @@ describe('HomePage', () => {
       expect(fullButton.disabled).toBe(true);
     });
 
+    it('shows the Live badge only while someone is in the room', async () => {
+      liveRooms = [makeRoom(), makeRoom({ id: 'r2', name: 'Empty desk', memberCount: 0 })];
+      await renderHome();
+      const live = await screen.findByRole('article', { name: 'Finals week focus' });
+      const empty = screen.getByRole('article', { name: 'Empty desk' });
+
+      expect(within(live).queryByText('Live')).not.toBeNull();
+      expect(within(empty).queryByText('Live')).toBeNull();
+      expect(within(empty).getByText('Be the first one in')).toBeDefined();
+    });
     it('filters by a card’s subject through ?subject=', async () => {
       liveRooms = [makeRoom()];
       const router = await renderHome();
@@ -291,6 +302,48 @@ describe('HomePage', () => {
       liveRooms = [makeRoom()];
       fireEvent.click(screen.getByRole('button', { name: 'Reload rooms' }));
       expect(await screen.findByRole('article', { name: 'Finals week focus' })).toBeDefined();
+    });
+  });
+
+  describe('Happening now', () => {
+    const hero = () => screen.getByRole('region', { name: 'Study with people, not alone.' });
+
+    it('shows the first room whose timer is running, counting down to its endsAt', async () => {
+      const endsAt = new Date(Date.now() + (18 * 60 + 12) * 1000).toISOString();
+      liveRooms = [
+        makeRoom({ id: 'idle', name: 'Waiting room' }),
+        makeRoom({
+          id: 'r2',
+          name: 'Late-night exam grind',
+          memberCount: 9,
+          timer: { phase: 'focus', round: 3, endsAt, pausedRemaining: null },
+        }),
+      ];
+      await renderHome();
+
+      const card = await within(hero()).findByRole('link', { name: 'Join Late-night exam grind' });
+      expect(card.getAttribute('href')).toBe('/room/r2');
+      expect(within(card).getByText('Happening now')).toBeDefined();
+      expect(within(card).getByText('left in round 3').parentElement?.textContent).toMatch(/^18:1[12]left/);
+      expect(within(card).getByText('9').parentElement?.textContent).toBe('9 studying');
+      expect(within(card).getByText('Maya')).toBeDefined();
+    });
+
+    it('falls back to a room with people in it when no timer is running', async () => {
+      liveRooms = [makeRoom({ id: 'empty', name: 'Empty desk', memberCount: 0 }), makeRoom()];
+      await renderHome();
+
+      const card = await within(hero()).findByRole('link', { name: 'Join Finals week focus' });
+      expect(within(card).getByText('Waiting to start')).toBeDefined();
+    });
+
+    it('stays quiet while nobody is studying', async () => {
+      liveRooms = [makeRoom({ memberCount: 0 })];
+      await renderHome();
+      await screen.findByRole('article', { name: 'Finals week focus' });
+
+      expect(within(hero()).getByText('No rooms live right now')).toBeDefined();
+      expect(within(hero()).queryByRole('link')).toBeNull();
     });
   });
 

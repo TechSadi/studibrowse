@@ -27,6 +27,8 @@ export interface AppDependencies {
   verifyGoogleToken?: GoogleVerifier;
   /** Defaults to Cloudinary when configured (uploads off otherwise). Tests pass a fake. */
   storage?: StorageService;
+  /** Tells the lobby about a room that was just created. The server wires it to Socket.IO; tests may leave it out. */
+  onRoomCreated?: (roomId: string) => void;
 }
 
 /** Builds the Express app without listening, so tests can import it. */
@@ -36,6 +38,7 @@ export function createApp({
   emailService = createEmailService(env),
   verifyGoogleToken = createGoogleVerifier(env.GOOGLE_CLIENT_ID),
   storage = createStorageService(env),
+  onRoomCreated,
 }: AppDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -50,7 +53,7 @@ export function createApp({
   // The password, email and Google endpoints are rate limited inside the router.
   app.use('/api/auth', createAuthRouter({ emailService, verifyGoogleToken }));
   app.use('/api/users', createUsersRouter());
-  app.use('/api/rooms', createRoomsRouter({ storage }));
+  app.use('/api/rooms', createRoomsRouter({ storage, onRoomCreated }));
   app.use('/api/sessions', createSessionsRouter());
   app.use('/api/progress', createProgressRouter());
 

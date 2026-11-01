@@ -36,7 +36,7 @@ Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `A
 
 ## Request flow: Socket.IO
 
-For everything live inside a room, and for notifications.
+For everything live inside a room, for notifications, and for the lobby (the live list of public rooms on Home).
 
 ```
 web: io({ auth: (cb) => cb({ token: <access token> }) })      (src/lib/socket.ts, opened after login)
@@ -146,18 +146,39 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 | Endpoint | Auth | What it does |
 | --- | --- | --- |
 | `POST /api/rooms` | signed in | `createRoomSchema`: name (≤ 60), subject (optional, ≤ 40), description (optional, ≤ 200), `isPublic`, `maxSize` 2 to 20, up to 10 goals (≤ 120 each), `timerSettings` (the `TIMER_LIMITS` ranges, plus `autoStart`). The creator becomes the host. Answers 201 with the `RoomDetail`. |
-| `GET /api/rooms/public` | signed in | Rooms worth joining. `page` (9 per page, `nextPage` is null on the last), `subject` (exact, any case), `q` (name or subject contains, plain text), `filter` = `all`, `open` (has space), `focus` or `break`. |
+| `GET /api/rooms/public` | signed in | Rooms worth joining. `page` (9 per page, `nextPage` is null on the last), `subject` (exact, any case), `q` (name or subject contains, plain text), `filter` = `all`, `open` (has space), `focus` or `break`. Each card is a `RoomSummary`: id, name, subject, host, `isPublic`, `maxSize`, `memberCount`, `isLive`, timer, `timerSettings`, `createdAt` and `hostFollowed`. |
 | `GET /api/rooms/:id` | signed in | One room. |
 | `POST /api/rooms/:id/uploads/sign` | signed in, in the room, rate limited per person (30 per 15 minutes) | `uploadSignSchema`: `fileName` (≤ 120), `size` (1 byte to 10 MB), `contentType` (PDF, JPEG, PNG, GIF or WebP). Answers `{ uploadUrl, fields }` for one upload straight to storage. 403 `NOT_A_MEMBER` unless you're in the room (presence), 503 `UPLOADS_UNAVAILABLE` when storage isn't configured. See Shared resources. |
 | `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview. An open room answers `{ status: 'open', room }`: id, name, subject, description, host, member count, the first 4 people as initials and avatar colour only, size, timer and goal texts. A closed room answers `{ status: 'closed', room }`: name, host and `roomsPerWeek` (rooms the host opened in the last 4 weeks ÷ 4, rounded), for the Room closed page. 404 `ROOM_NOT_FOUND` for an unknown code or a host account that's gone. |
 
-- **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts idle: `{ phase: 'idle', round: 1, endsAt: null, pausedRemaining: null }`.
+- **Open** means `closedAt` is null; only open rooms are listed. **`isLive`** on a card means someone is in the room right now (`memberCount > 0`, people inside the reconnect window included), and decides the card's Live badge. An empty room in its grace period stays listed, without the badge. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts idle: `{ phase: 'idle', round: 1, endsAt: null, pausedRemaining: null }`.
 - **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission. It includes the room id so a signed-in visitor can be sent into the room; the id grants nothing on its own, since joining a private room still needs the code.
 - **Order:** rooms hosted by people you follow first, then newest (`$addFields hostFollowed` in an aggregation, with the host joined by `$lookup`). Rooms whose host account is gone are left out.
 - **Phase filters** count only running timers: a paused or not-yet-started room is neither "In a focus round" nor "On a break".
 - **Invite codes:** `nanoid(10)` (URL-safe alphabet, cryptographic randomness, 64^10 codes), unique index, retried on the rare collision. `INVITE_CODE_PATTERN` in shared is the one definition of a valid code; the Home join box uses it too.
 - **Member counts** come from the in-memory presence store (`realtime/presence.ts`), one per person however many tabs they have open. "Has space" leaves out `fullRoomIds()` in the database query, so paging stays correct. A private room is also visible (`GET /:id`) to the people currently in it.
-- **Web:** `roomsApi` in `lib/api.ts`. `features/rooms/CreateRoomDialog.tsx` (rendered by Home while `?create=1` is set, starting from your timer defaults) creates the room and opens `/room/:id`. In `mode="settings"` the same dialog is the host's Room settings (see Room settings below). `features/home/LiveRooms.tsx` loads pages with `useInfiniteQuery` keyed by filter, `q` and `?subject=` (a card's subject tag sets it). `features/rooms/timerText.ts` works out a card's "N min left" from `endsAt`, and the cards redraw every 30 seconds. `components/ui/Modal.tsx` is the shared dialog: Escape and backdrop close it, Tab stays inside, and focus returns to the opener.
+- **Web:** `roomsApi` in `lib/api.ts`. `features/rooms/CreateRoomDialog.tsx` (rendered by Home while `?create=1` is set, starting from your timer defaults) creates the room and opens `/room/:id`. In `mode="settings"` the same dialog is the host's Room settings (see Room settings below). `features/home/LiveRooms.tsx` loads pages through `useLiveRooms` (`features/home/useLiveRooms.ts`), a `useInfiniteQuery` keyed `['rooms', 'public', { filter, q, subject }]` (a card's subject tag sets `?subject=`) and kept live by the lobby (see Lobby below). The hero's Happening now card uses the same hook, unfiltered, and shows the first room whose timer is running, else the first with people in it (`pickHappeningNow` in `features/home/roomList.ts`), with a countdown redrawn every second from `endsAt`. `features/rooms/timerText.ts` works out a card's "N min left" from `endsAt`, and the cards redraw every 30 seconds. `components/ui/Modal.tsx` is the shared dialog: Escape and backdrop close it, Tab stays inside, and focus returns to the opener.
+
+## Lobby: the live room list
+
+Pages that list public rooms (Home now, Profile later) join the Socket.IO room `lobby` with `lobby:subscribe` and leave with `lobby:unsubscribe`. Events are in `docs/SOCKET-EVENTS.md` › Lobby.
+
+- **Server:** `realtime/lobby.ts` holds `broadcastRoomCard(io, roomId)`, the one way a card reaches the lobby. It is called on every change a card shows:
+  - the room created (`POST /api/rooms`, through `createApp`'s `onRoomCreated`)
+  - someone new joins (`room:join`)
+  - someone leaves for good (`depart()`: `room:leave`, the reconnect window ending, and the host handover that may follow)
+  - room settings saved
+  - every `timer:state` (a pause changes the card's text and the phase filters)
+  - the cleanup job closing rooms (`startRoomCleanup`'s `onClosed`)
+
+  Each send reads the room right then (`loadRoomCard` in `rooms.service.ts`): an open public room → `rooms:upsert` with its card (a `RoomSummary` without `hostFollowed`), a closed public room → `rooms:remove`, a private room → nothing. `removeRoomCard` sends `rooms:remove` straight away when the host makes a room private, and drops any send still waiting or still reading.
+- **Coalescing:** at most one `rooms:upsert` per room per second (`LOBBY_COALESCE_MS`). The first change sends at once and opens a 1-second window; changes inside it are folded into one send when it closes, which opens the next window. State is in memory, like presence; `resetLobby()` clears it at shutdown and in tests.
+- **Web:** `useLiveRooms(filters)` holds a lobby subscription while mounted, shared by every mounted list and counted per socket, so one list unmounting doesn't unsubscribe another. Each pushed card gets `hostFollowed` from `user.following` and is merged into that list's cache with `setQueryData` (`upsertRoom` / `removeRoom` in `features/home/roomList.ts`):
+  - a listed room is updated in place, or dropped if it no longer matches the filters (`matchesRoomFilters` mirrors the server's query)
+  - a new room goes where the server would list it (people you follow first, then newest), unless that's past the loaded pages, where Show more brings it in
+  - other cached filters are marked stale
+
+  On every reconnect it subscribes again (the server sees a new socket) and refetches the public lists once. Cards that arrive after the first render fade in (`.enter`, none with reduced motion).
 
 ## Timer: the server owns it
 

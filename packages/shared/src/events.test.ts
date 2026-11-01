@@ -15,6 +15,8 @@ import {
   goalRemoveSchema,
   goalToggleSchema,
   hostTransferSchema,
+  lobbySubscribeSchema,
+  lobbyUnsubscribeSchema,
   resourceAddSchema,
   resourceRemoveSchema,
   roomJoinSchema,
@@ -38,6 +40,8 @@ describe('clientEventSchemas', () => {
         'goal:remove',
         'goal:toggle',
         'host:transfer',
+        'lobby:subscribe',
+        'lobby:unsubscribe',
         'member:remove',
         'resource:add',
         'resource:remove',
@@ -57,6 +61,20 @@ describe('clientEventSchemas', () => {
     expectTypeOf<SignalEventName>().toEqualTypeOf<'chat:typing'>();
     expectTypeOf<'chat:send'>().toExtend<AckEventName>();
     expectTypeOf<AckData<'chat:send'>>().toHaveProperty('message');
+  });
+});
+
+describe.each([
+  ['lobby:subscribe', lobbySubscribeSchema],
+  ['lobby:unsubscribe', lobbyUnsubscribeSchema],
+])('%s', (_event, schema) => {
+  it('takes an empty payload', () => {
+    expect(schema.parse({})).toEqual({});
+  });
+
+  it('rejects unknown fields and non-objects', () => {
+    expect(schema.safeParse({ roomId }).success).toBe(false);
+    expect(schema.safeParse(undefined).success).toBe(false);
   });
 });
 

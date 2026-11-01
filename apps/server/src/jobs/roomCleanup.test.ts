@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROOM_GRACE_MS } from '@studibrowse/shared';
 import { Message } from '../modules/chat/message.model';
 import { Resource } from '../modules/resources/resource.model';
@@ -10,7 +10,7 @@ import { createRoomTimer } from '../realtime/roomTimer';
 import { createUserWithToken } from '../test/authHelpers';
 import { createFakeStorage, type FakeStorage } from '../test/fakeStorage';
 import { useTestDatabase } from '../test/testDb';
-import { closeEmptyRooms, markUnoccupiedRoomsEmpty } from './roomCleanup';
+import { closeEmptyRooms, markUnoccupiedRoomsEmpty, startRoomCleanup } from './roomCleanup';
 
 useTestDatabase();
 afterEach(resetPresence);
@@ -168,5 +168,23 @@ describe('markUnoccupiedRoomsEmpty', () => {
 
     expect((await Room.findById(orphan.room.id).lean())?.emptySince).toEqual(now);
     expect((await Room.findById(occupied.room.id).lean())?.emptySince).toBeNull();
+  });
+});
+
+describe('startRoomCleanup', () => {
+  it('hands the ids each run closed to onClosed, so the lobby can take them down', async () => {
+    const realNow = new Date();
+    const { room } = await roomEmptySince(new Date(realNow.getTime() - ROOM_GRACE_MS - 60_000));
+    await roomEmptySince(realNow);
+    const onClosed = vi.fn();
+
+    const stop = startRoomCleanup({ storage, onClosed, intervalMs: 20 });
+    try {
+      await vi.waitFor(() => expect(onClosed).toHaveBeenCalledWith([room.id]));
+    } finally {
+      stop();
+    }
+    // Later runs closed nothing, so onClosed only heard about that room.
+    expect(onClosed.mock.calls.flat(2)).toEqual([room.id]);
   });
 });

@@ -177,6 +177,25 @@
   -webkit-backdrop-filter: blur(8px);
 }
 
+.previewLink {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
+}
+
+.previewLink:hover {
+  border-color: rgb(var(--glow-accent) / 0.4);
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .previewLink:hover {
+    transform: none;
+  }
+}
+
 .preview :global(.eyebrow) {
   font-size: 11px;
 }
@@ -205,6 +224,10 @@
   stroke: rgb(var(--wash) / 0.08);
 }
 
+.pvProgress {
+  stroke: var(--accent);
+}
+
 .pvTime {
   position: absolute;
   inset: 0;
@@ -212,19 +235,31 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 500;
 }
 
 .pvTime small {
+  font-family: var(--body);
   font-size: 12px;
   color: var(--muted);
   font-weight: 500;
 }
 
 .pvFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
   font-size: 13px;
   color: var(--muted);
+}
+
+.pvFoot b {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .weekly {

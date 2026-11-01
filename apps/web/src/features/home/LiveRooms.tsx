@@ -1,4 +1,3 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { RoomFilter } from '@studibrowse/shared';
 import { Button } from '../../components/ui/Button';
@@ -7,11 +6,11 @@ import { Icon } from '../../components/ui/Icon';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useNow } from '../../hooks/useNow';
 import { useSearchParam } from '../../hooks/useSearchParam';
-import { roomsApi } from '../../lib/api';
 import { onRadioKeyDown } from '../../lib/radioGroup';
 import styles from './Home.module.css';
 import { RoomCard, RoomCardSkeleton } from './RoomCard';
 import { useCreateRoomDialog } from './useCreateRoomDialog';
+import { useLiveRooms } from './useLiveRooms';
 
 const FILTERS: { id: RoomFilter; label: string }[] = [
   { id: 'all', label: 'All rooms' },
@@ -24,15 +23,6 @@ const SEARCH_DEBOUNCE_MS = 250;
 /** Cards say "N min left", so a refresh every 30 seconds keeps them right to the minute. */
 const CLOCK_MS = 30_000;
 
-function usePublicRooms(filter: RoomFilter, q: string, subject: string) {
-  return useInfiniteQuery({
-    queryKey: ['rooms', 'public', { filter, q, subject }],
-    queryFn: ({ pageParam }) => roomsApi.listPublic({ page: pageParam, filter, q, subject }),
-    initialPageParam: 1,
-    getNextPageParam: (last) => last.nextPage ?? undefined,
-  });
-}
-
 /** Rooms worth joining: live public rooms, people you follow first. */
 export function LiveRooms() {
   const [filter, setFilter] = useState<RoomFilter>('all');
@@ -40,9 +30,16 @@ export function LiveRooms() {
   const [subject, setSubject] = useSearchParam('subject');
   const debouncedQuery = useDebouncedValue(query.trim(), SEARCH_DEBOUNCE_MS);
   const createRoom = useCreateRoomDialog();
-  const rooms = usePublicRooms(filter, debouncedQuery, subject);
+  const filters = { filter, q: debouncedQuery, subject };
+  const rooms = useLiveRooms(filters);
   const now = useNow(CLOCK_MS);
   const list = rooms.data?.pages.flatMap((page) => page.rooms) ?? [];
+  // Rooms in the first list shown for these filters just appear; any that turn up live after that fade in.
+  const listKey = JSON.stringify(filters);
+  const [firstShown, setFirstShown] = useState<{ key: string; ids: Set<string> } | null>(null);
+  if (rooms.data && firstShown?.key !== listKey) {
+    setFirstShown({ key: listKey, ids: new Set(list.map((room) => room.id)) });
+  }
   const narrowed = query.trim() !== '' || subject !== '' || filter !== 'all';
 
   function emptyTitle() {
@@ -93,7 +90,15 @@ export function LiveRooms() {
       </EmptyState>
     );
   } else {
-    content = list.map((room) => <RoomCard key={room.id} room={room} now={now} onSubject={setSubject} />);
+    content = list.map((room) => (
+      <RoomCard
+        key={room.id}
+        room={room}
+        now={now}
+        onSubject={setSubject}
+        entering={firstShown?.key === listKey && !firstShown.ids.has(room.id)}
+      />
+    ));
   }
 
   return (

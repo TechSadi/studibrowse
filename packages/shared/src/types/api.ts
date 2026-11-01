@@ -143,11 +143,18 @@ export interface RoomSummary {
   isPublic: boolean;
   maxSize: number;
   memberCount: number;
+  /** Someone is in the room right now (people inside the reconnect window count). Drives the Live badge. */
+  isLive: boolean;
   timer: RoomTimer;
   timerSettings: TimerSettings;
+  /** ISO timestamp. Newer rooms are listed first, after the ones hosted by people you follow. */
+  createdAt: string;
   /** You follow the host, so the card is highlighted and listed first. */
   hostFollowed: boolean;
 }
+
+/** A room card as the lobby pushes it (rooms:upsert). Each client works out hostFollowed itself. */
+export type LobbyRoomCard = Omit<RoomSummary, 'hostFollowed'>;
 
 export interface RoomDetail extends Omit<RoomSummary, 'hostFollowed'> {
   description: string;
@@ -157,7 +164,6 @@ export interface RoomDetail extends Omit<RoomSummary, 'hostFollowed'> {
   isHost: boolean;
   totalSessions: number;
   totalFocusMins: number;
-  createdAt: string;
 }
 
 /** Someone in the room, as an invite shows them to a possibly signed-out visitor: initials only. */

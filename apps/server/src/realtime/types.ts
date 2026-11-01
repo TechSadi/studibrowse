@@ -14,3 +14,6 @@ export const userRoom = (userId: string) => `user:${userId}`;
 
 /** The Socket.IO room for a study room's members. */
 export const roomChannel = (roomId: string) => `room:${roomId}`;
+
+/** The Socket.IO room for everyone looking at a list of public rooms (Home). */
+export const LOBBY_CHANNEL = 'lobby';

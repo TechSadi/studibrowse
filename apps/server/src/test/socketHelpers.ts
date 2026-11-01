@@ -13,6 +13,7 @@ import type {
 import { createApp } from '../app';
 import type { UserDocument } from '../modules/users/user.model';
 import { createIo } from '../realtime/io';
+import { broadcastRoomCard } from '../realtime/lobby';
 import type { HandlerRegistrar, TypedServer } from '../realtime/types';
 import { createUserWithToken } from './authHelpers';
 
@@ -45,7 +46,14 @@ export async function startSocketServer({
   registerHandlers = [],
 }: { registerHandlers?: HandlerRegistrar[] } = {}): Promise<TestSocketServer> {
   const clientOrigin = 'http://localhost:5173';
-  const httpServer = createServer(createApp({ isDatabaseConnected: () => true, clientOrigin }));
+  const httpServer = createServer(
+    createApp({
+      isDatabaseConnected: () => true,
+      clientOrigin,
+      // Only called for requests, which can't arrive before io exists.
+      onRoomCreated: (roomId) => broadcastRoomCard(io, roomId),
+    }),
+  );
   const io = createIo(httpServer, { clientOrigin, registerHandlers });
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
   const { port } = httpServer.address() as AddressInfo;
