@@ -8,12 +8,20 @@ export interface RoomSession {
   state: RoomSessionState;
   /** Try joining again after an error. */
   retry: () => void;
+  /**
+   * Leave with the Leave button: the room moves to `left` at once, and the promise settles once the server has
+   * saved your focus time (or the leave failed), so the session summary can load after it.
+   */
+  leave: () => Promise<void>;
+  /** Join again after leaving, as a new visit. */
+  rejoin: () => void;
 }
 
 /**
  * Being in a room: joins when the socket connects and joins again after every reconnect (Socket.IO doesn't
  * rejoin rooms by itself; inside the server's reconnect window you keep your place). Follows presence, room
- * settings, goals and removal. Unmounting leaves the room, unless the room had already ended for you.
+ * settings, goals, shared files and removal. Unmounting leaves the room, unless you already left or the room
+ * had ended for you.
  */
 export function useRoomSession(roomId: string, inviteCode: string | undefined): RoomSession {
   const { socket } = useSocket();
@@ -72,10 +80,30 @@ export function useRoomSession(roomId: string, inviteCode: string | undefined): 
   useSocketEvent('goal:update', (payload) => {
     if (payload.roomId === roomId) dispatch({ type: 'goals', goals: payload.goals });
   });
+  useSocketEvent('resource:new', ({ resource }) => {
+    if (resource.roomId === roomId) dispatch({ type: 'resourceAdded', resource });
+  });
+  useSocketEvent('resource:removed', (payload) => {
+    if (payload.roomId === roomId) dispatch({ type: 'resourceRemoved', resourceId: payload.resourceId });
+  });
   useSocketEvent('room:removed', (payload) => {
     if (payload.roomId === roomId) dispatch({ type: 'removed' });
   });
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  return { state, retry };
+
+  const leave = useCallback(async () => {
+    const { status } = stateRef.current;
+    if (status !== 'joined' && status !== 'rejoining') return;
+    // `left` counts as ended, so unmounting won't send room:leave a second time.
+    dispatch({ type: 'left' });
+    await emitWithAck('room:leave', { roomId }).catch(() => undefined);
+  }, [roomId]);
+
+  const rejoin = useCallback(() => {
+    dispatch({ type: 'rejoin' });
+    setAttempt((n) => n + 1);
+  }, []);
+
+  return { state, retry, leave, rejoin };
 }

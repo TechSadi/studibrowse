@@ -25,7 +25,7 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-/** A link or file on the room's shared shelf. Files are uploaded over REST first. */
+/** A link or file on the room's shared shelf. Files are uploaded to storage first (see docs/ARCHITECTURE.md). */
 export interface RoomResource {
   id: string;
   roomId: string;
@@ -35,6 +35,12 @@ export interface RoomResource {
   url: string;
   /** Bytes, for files. Null for links. */
   size: number | null;
+  /** The uploaded file's original name. Null for links. */
+  fileName: string | null;
+  /** Saves the file under its original name instead of opening it. Null for links. */
+  downloadUrl: string | null;
+  /** A small preview, for images only. Null for links and PDFs. */
+  thumbnailUrl: string | null;
   /** ISO timestamp. */
   createdAt: string;
 }

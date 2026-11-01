@@ -86,8 +86,30 @@ test.describe('A shared room', () => {
       await expect(person.page.getByRole('log', { name: 'Room chat' })).toContainText(message);
     }
 
+    // ---- A shared link reaches the others, and goes when its sharer removes it ----
+    for (const person of people) await person.page.getByRole('tab', { name: 'Files' }).click();
+    await priya.page.getByRole('textbox', { name: 'Resource title' }).fill('Past exam papers');
+    await priya.page.getByRole('textbox', { name: 'Resource link' }).fill('https://example.com/papers');
+    await priya.page.getByRole('button', { name: 'Share', exact: true }).click();
+    for (const person of people) {
+      await expect(person.page.getByRole('link', { name: 'Open Past exam papers' })).toBeVisible();
+    }
+    await expect(jonah.page.getByText(`Shared by ${priya.firstName}`)).toBeVisible();
+    // Only the sharer and the host can remove it.
+    await expect(jonah.page.getByRole('button', { name: 'Remove Past exam papers' })).toHaveCount(0);
+    await priya.page.getByRole('button', { name: 'Remove Past exam papers' }).click();
+    for (const person of people) {
+      await expect(person.page.getByRole('link', { name: 'Open Past exam papers' })).toHaveCount(0);
+    }
+
     // ---- The host leaves and the role passes to the next member ----
     await host.page.getByRole('button', { name: 'Leave', exact: true }).click();
+    // The session summary: under a minute of focus, so nothing logged yet, and the room is still open.
+    const summary = host.page.getByRole('dialog', { name: `Nice session, ${host.firstName}` });
+    await expect(summary).toBeVisible();
+    await expect(summary.getByText('focused')).toBeVisible();
+    await expect(summary.getByRole('button', { name: 'Rejoin the room' })).toBeVisible();
+    await summary.getByRole('button', { name: 'Back to home' }).click();
     await expect(host.page).toHaveURL('/home');
 
     for (const guest of [jonah, priya]) {

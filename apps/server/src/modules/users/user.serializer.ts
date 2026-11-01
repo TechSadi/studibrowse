@@ -24,6 +24,7 @@ export function toPublicUser(user: UserDocument): PublicUser {
     },
     streak: { current: user.streak.current, longest: user.streak.longest },
     lastStudiedAt: user.lastStudiedAt?.toISOString() ?? null,
+    timeZone: user.timeZone,
     following: user.following.map((id) => id.toString()),
     notificationPrefs: {
       roomOpened: user.notificationPrefs.roomOpened,

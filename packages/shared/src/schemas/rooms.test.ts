@@ -76,7 +76,7 @@ describe('createRoomSchema', () => {
     ['a subject over 40 characters', { subject: 'x'.repeat(41) }],
     ['a description over 200 characters', { description: 'x'.repeat(201) }],
     ['a blank goal', { goals: ['  '] }],
-    ['a goal over 80 characters', { goals: ['x'.repeat(81)] }],
+    ['a goal over 120 characters', { goals: ['x'.repeat(121)] }],
     ['a missing visibility', { isPublic: undefined }],
     ['an unknown field', { hostId: '6650f0c2a1b2c3d4e5f60718' }],
     ['a timer state', { timer: { phase: 'focus' } }],

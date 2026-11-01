@@ -10,6 +10,9 @@ export interface ResourceRecord {
   title: string;
   url: string;
   size: number | null;
+  fileName?: string | null;
+  downloadUrl?: string | null;
+  thumbnailUrl?: string | null;
   createdAt: Date;
 }
 
@@ -22,6 +25,9 @@ export function toRoomResource(resource: ResourceRecord): RoomResource {
     title: resource.title,
     url: resource.url,
     size: resource.size ?? null,
+    fileName: resource.fileName ?? null,
+    downloadUrl: resource.downloadUrl ?? null,
+    thumbnailUrl: resource.thumbnailUrl ?? null,
     createdAt: resource.createdAt.toISOString(),
   };
 }

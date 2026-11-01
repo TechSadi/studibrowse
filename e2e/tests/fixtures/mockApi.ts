@@ -4,6 +4,8 @@ import type {
   AuthResponse,
   FollowedUser,
   InvitePreviewResponse,
+  MySession,
+  ProgressSummaryResponse,
   PublicUser,
   RoomDetail,
   RoomSummary,
@@ -40,10 +42,47 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     },
     streak: { current: 0, longest: 0 },
     lastStudiedAt: null,
+    timeZone: 'UTC',
     following: [],
     notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',
     createdAt: '2026-09-01T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** This week (Sunday to Saturday, UTC) with nothing logged, as a new user's summary. */
+export function makeProgress(overrides: Partial<ProgressSummaryResponse> = {}): ProgressSummaryResponse {
+  const now = new Date();
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const sunday = today - now.getUTCDay() * 86_400_000;
+  const days = Array.from({ length: 7 }, (_, index) => ({
+    date: new Date(sunday + index * 86_400_000).toISOString().slice(0, 10),
+    focusMins: 0,
+  }));
+  return {
+    range: 'week',
+    today: new Date(today).toISOString().slice(0, 10),
+    days,
+    week: { focusMins: 0, goalMins: 600, sessions: 0, people: 0, rooms: 0 },
+    lastWeek: { focusMins: 0 },
+    streak: { current: 0, longest: 0, studiedToday: false },
+    ...overrides,
+  };
+}
+
+export function makeMySession(overrides: Partial<MySession> = {}): MySession {
+  return {
+    id: `session-${Math.random().toString(36).slice(2, 8)}`,
+    roomName: 'Finals week focus',
+    startedAt: '2026-10-29T10:00:00.000Z',
+    endedAt: '2026-10-29T11:40:00.000Z',
+    focusedMins: 100,
+    roundsCompleted: 4,
+    roundsTotal: 4,
+    goalsDone: 2,
+    goalsTotal: 4,
+    peopleCount: 12,
     ...overrides,
   };
 }
@@ -80,6 +119,10 @@ export class MockApi {
   invites: Record<string, InvitePreviewResponse> = {};
   /** Request bodies by endpoint, e.g. calls.login[0]. */
   calls: Record<string, unknown[]> = {};
+  /** GET /api/progress/summary for whoever is signed in. */
+  progress: ProgressSummaryResponse = makeProgress();
+  /** GET /api/sessions/mine, newest first. The cursor is the index of the next session. */
+  mySessions: MySession[] = [];
 
   addAccount(user: PublicUser, password: string) {
     this.accounts.push({ user, password });
@@ -205,6 +248,20 @@ export class MockApi {
           return [{ id, name, username, avatarColor }];
         });
         return { status: 200, json: { users } };
+      }
+      case 'GET /api/progress/summary':
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        return { status: 200, json: this.progress };
+      case 'GET /api/sessions/mine': {
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const start = Number(url.searchParams.get('cursor') ?? 0);
+        const limit = Number(url.searchParams.get('limit') ?? 10);
+        const end = start + limit;
+        const sessions = this.mySessions.slice(start, end);
+        return {
+          status: 200,
+          json: { sessions, nextCursor: end < this.mySessions.length ? String(end) : null },
+        };
       }
       case 'GET /api/rooms/public': {
         const me = this.currentAccount();

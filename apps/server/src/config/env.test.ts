@@ -14,6 +14,9 @@ const valid = {
   GOOGLE_CLIENT_ID: 'client-id.apps.googleusercontent.com',
   RESEND_API_KEY: 're_test_key',
   EMAIL_FROM: 'StudiBrowse <hello@studibrowse.app>',
+  CLOUDINARY_CLOUD_NAME: 'studibrowse',
+  CLOUDINARY_API_KEY: '123456789012345',
+  CLOUDINARY_API_SECRET: 'cloudinary-secret',
 };
 
 describe('parseEnv', () => {
@@ -67,22 +70,31 @@ describe('parseEnv', () => {
     expect(result.problems[2]).toMatch(/^JWT_ACCESS_SECRET /);
   });
 
-  it.each(['GOOGLE_CLIENT_ID', 'RESEND_API_KEY', 'EMAIL_FROM'])('requires %s in production', (key) => {
+  it.each([
+    'GOOGLE_CLIENT_ID',
+    'RESEND_API_KEY',
+    'EMAIL_FROM',
+    'CLOUDINARY_CLOUD_NAME',
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET',
+  ])('requires %s in production', (key) => {
     const result = parseEnv({ ...valid, [key]: undefined });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.problems).toEqual([`${key} is required in production`]);
   });
 
-  it('leaves the Google and email settings optional outside production', () => {
+  it('leaves the Google, email and Cloudinary settings optional outside production', () => {
     const result = parseEnv({
       NODE_ENV: 'development',
       MONGODB_URI: valid.MONGODB_URI,
       CLIENT_ORIGIN: valid.CLIENT_ORIGIN,
       JWT_ACCESS_SECRET: valid.JWT_ACCESS_SECRET,
       GOOGLE_CLIENT_ID: '',
+      CLOUDINARY_API_SECRET: '',
     });
     expect(result.ok && result.env.GOOGLE_CLIENT_ID).toBeUndefined();
+    expect(result.ok && result.env.CLOUDINARY_API_SECRET).toBeUndefined();
   });
 
   it('rejects a MongoDB URI with the wrong scheme', () => {

@@ -8,7 +8,10 @@ const ICONS = {
   chat: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z" />,
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   crown: <path d="m3 8 4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor" stroke="none" />,
+  // Not in the mockup's sprite: drawn to match it (24px grid, the same stroke).
+  download: <path d="M12 4v11m-5-5 5 5 5-5M5 20h14" />,
   exit: <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" />,
+  ext: <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />,
   file: (
     <>
       <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" />

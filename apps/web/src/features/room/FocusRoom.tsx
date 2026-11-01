@@ -6,8 +6,10 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSocketEvent } from '../../hooks/useSocket';
 import { CreateRoomDialog } from '../rooms/CreateRoomDialog';
 import { ChatPanel } from './chat/ChatPanel';
+import { useRoomFiles } from './files/useRoomFiles';
 import { FilesPanel } from './FilesPanel';
 import styles from './FocusRoom.module.css';
+import { useRoomGoals } from './goals/useRoomGoals';
 import { GoalsPanel } from './GoalsPanel';
 import { MyStatus } from './MyStatus';
 import { firstName } from './people';
@@ -91,7 +93,11 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const code = room.inviteCode ?? inviteCode;
-  const goalsDone = room.goals.filter((goal) => goal.done).length;
+  // The tab count follows your changes as soon as you make them, like the list does.
+  const roomGoals = useRoomGoals(room.id, room.goals, user.id);
+  const { goals } = roomGoals;
+  const goalsDone = goals.filter((goal) => goal.done).length;
+  const roomFiles = useRoomFiles(room.id);
 
   return (
     <>
@@ -130,7 +136,7 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
           tab={tab}
           onTabChange={showTab}
           counts={{
-            goals: room.goals.length ? `${goalsDone}/${room.goals.length}` : undefined,
+            goals: goals.length ? `${goalsDone}/${goals.length}` : undefined,
             people: String(members.length),
           }}
           drawer={drawer}
@@ -146,9 +152,17 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
                 focusRound={timer.phase === 'focus'}
               />
             ),
-            goals: <GoalsPanel goals={room.goals} members={members} myUserId={user.id} />,
+            goals: <GoalsPanel roomGoals={roomGoals} members={members} myUserId={user.id} isHost={isHost} />,
             people: <PeoplePanel members={members} myUserId={user.id} />,
-            files: <FilesPanel resources={resources} members={members} />,
+            files: (
+              <FilesPanel
+                resources={resources}
+                roomFiles={roomFiles}
+                members={members}
+                myUserId={user.id}
+                isHost={isHost}
+              />
+            ),
           }}
         />
         {drawer ? (

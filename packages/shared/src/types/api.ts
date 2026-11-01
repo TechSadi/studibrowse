@@ -1,4 +1,4 @@
-import type { AvatarColor, TimerPhase } from '../constants';
+import type { AvatarColor, ProgressRange, TimerPhase } from '../constants';
 
 /** Body of every error response from the API. */
 export interface ApiErrorBody {
@@ -31,6 +31,8 @@ export interface PublicUser {
   streak: { current: number; longest: number };
   /** ISO timestamp, or null before the first logged session. */
   lastStudiedAt: string | null;
+  /** IANA time zone the streak's days are counted in. The web app keeps it in step with the browser. */
+  timeZone: string;
   /** Ids of the people this user follows. */
   following: string[];
   notificationPrefs: NotificationPrefs;
@@ -207,3 +209,81 @@ export interface PublicRoomsResponse {
 /** A closed room is a normal answer for an invite link, not an error. An unknown code is a 404. */
 export type InvitePreviewResponse =
   { status: 'open'; room: InvitePreview } | { status: 'closed'; room: ClosedRoomPreview };
+
+/**
+ * POST /api/rooms/:id/uploads/sign. The client posts `fields` plus the file (as `file`) to `uploadUrl` and
+ * gets back JSON with the file's `secure_url`.
+ */
+export interface UploadSignResponse {
+  uploadUrl: string;
+  fields: Record<string, string>;
+}
+
+/** One of your sessions (a timer run), with your own minutes in it. */
+export interface MySession {
+  id: string;
+  roomName: string;
+  /** ISO timestamps. `endedAt` is null while the run is still going. */
+  startedAt: string;
+  endedAt: string | null;
+  focusedMins: number;
+  roundsCompleted: number;
+  /** The rounds the timer was set to run, for "3 of 4". Null for sessions saved before it was recorded. */
+  roundsTotal: number | null;
+  /** The room's ticked goals, out of `goalsTotal`, when the session was last saved. */
+  goalsDone: number;
+  goalsTotal: number;
+  /** Everyone who focused for at least a minute in the run, you included. */
+  peopleCount: number;
+}
+
+/**
+ * GET /api/sessions/mine: your session history, newest first. The first page starts with any sessions still in
+ * progress (you left, the run goes on), then finished ones by when they ended.
+ */
+export interface MySessionsResponse {
+  sessions: MySession[];
+  /** Pass as `cursor` for the next (older) page; null on the last page. */
+  nextCursor: string | null;
+}
+
+/** One local calendar day in your time zone. */
+export interface ProgressDay {
+  /** "2026-11-01", the day in your time zone. */
+  date: string;
+  focusMins: number;
+}
+
+/** GET /api/progress/summary?range=week: Progress's tiles and chart, Home's weekly card and the streak card. */
+export interface ProgressSummaryResponse {
+  range: ProgressRange;
+  /** Today in your time zone, "2026-11-04". */
+  today: string;
+  /** This week, Sunday to Saturday in your time zone: always 7 days. */
+  days: ProgressDay[];
+  week: {
+    focusMins: number;
+    goalMins: number;
+    /** Sessions you were in that started this week, in progress ones included. */
+    sessions: number;
+    /** Different people you studied with in them, not counting you. */
+    people: number;
+    /** Different rooms they were in. */
+    rooms: number;
+  };
+  lastWeek: { focusMins: number };
+  /** `current` is 0 once the streak has lapsed (no study today or yesterday, in your time zone). */
+  streak: { current: number; longest: number; studiedToday: boolean };
+}
+
+/** GET /api/sessions/mine/latest: what the session summary shows after you leave a room. */
+export interface LatestSessionResponse {
+  /** Your latest session in the room, or null if you have none (since `since`). */
+  session: MySession | null;
+  /** The room hasn't closed, so you can rejoin it. */
+  roomOpen: boolean;
+  /** Your focus this week (Sunday to Saturday in your time zone) against your weekly goal. */
+  week: { focusMins: number; goalMins: number };
+  /** Your current streak if you studied today, otherwise 0. */
+  streakDays: number;
+}

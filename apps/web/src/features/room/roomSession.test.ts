@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PresenceMember, RoomDetail, RoomJoinData } from '@studibrowse/shared';
+import type { PresenceMember, RoomDetail, RoomJoinData, RoomResource } from '@studibrowse/shared';
 import { initialRoomSession, isEnded, roomSessionReducer, type RoomSessionState } from './roomSession';
 
 const room = {
@@ -72,7 +72,30 @@ describe('roomSessionReducer', () => {
     expect(roomSessionReducer(dropped, { type: 'join' })).toBe(dropped);
 
     const back = roomSessionReducer(dropped, { type: 'joined', data: { ...joinData, serverNow: 2000 } });
-    expect(back).toMatchObject({ status: 'joined', joined: { snapshot: { serverNow: 2000 } } });
+    // A reconnect is the same visit.
+    expect(back).toMatchObject({
+      status: 'joined',
+      joined: { snapshot: { serverNow: 2000 }, joinedAt: 1000 },
+    });
+  });
+
+  it('keeps the room for the summary after leaving, and starts a new visit on rejoin', () => {
+    const left = roomSessionReducer(joined, { type: 'left' });
+    expect(left).toMatchObject({ status: 'left', joined: { room, joinedAt: 1000 } });
+    expect(isEnded(left)).toBe(true);
+    // Nothing from the room changes what you left.
+    expect(roomSessionReducer(left, { type: 'presence', members: [] })).toBe(left);
+
+    const joining = roomSessionReducer(left, { type: 'rejoin' });
+    expect(joining).toEqual({ status: 'joining' });
+    const again = roomSessionReducer(joining, { type: 'joined', data: { ...joinData, serverNow: 5000 } });
+    expect(again).toMatchObject({ joined: { joinedAt: 5000 } });
+  });
+
+  it('only leaves from inside the room', () => {
+    const removed = roomSessionReducer(joined, { type: 'removed' });
+    expect(roomSessionReducer(removed, { type: 'left' })).toBe(removed);
+    expect(roomSessionReducer(joined, { type: 'rejoin' })).toBe(joined);
   });
 
   it('shows Room full if the seat was lost while away', () => {
@@ -99,6 +122,29 @@ describe('roomSessionReducer', () => {
         room: { name: 'Exam cram', maxSize: 6, memberCount: 2, goals: [{ text: 'Past paper' }] },
       },
     });
+  });
+
+  it('adds shared resources once each and drops removed ones', () => {
+    const notes: RoomResource = {
+      id: 'r1',
+      roomId: room.id,
+      userId: 'hana',
+      type: 'link',
+      title: 'Notes',
+      url: 'https://example.com',
+      size: null,
+      fileName: null,
+      downloadUrl: null,
+      thumbnailUrl: null,
+      createdAt: '2026-11-01T12:00:00.000Z',
+    };
+    let state = roomSessionReducer(joined, { type: 'resourceAdded', resource: notes });
+    state = roomSessionReducer(state, { type: 'resourceAdded', resource: notes });
+    state = roomSessionReducer(state, { type: 'resourceAdded', resource: { ...notes, id: 'r2' } });
+    expect(state).toMatchObject({ joined: { resources: [{ id: 'r1' }, { id: 'r2' }] } });
+
+    state = roomSessionReducer(state, { type: 'resourceRemoved', resourceId: 'r1' });
+    expect(state).toMatchObject({ joined: { resources: [{ id: 'r2' }] } });
   });
 
   it('ignores room updates before joining', () => {

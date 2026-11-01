@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { makeRoom, makeUser, mockApi, type MockApi } from './fixtures/mockApi';
+import { mockSocket } from './fixtures/mockSocket';
 
 test.describe('Home and the app shell', () => {
   let api: MockApi;
@@ -97,6 +98,32 @@ test.describe('Home and the app shell', () => {
   });
 
   test('creates a room and shows its invite link', async ({ page }) => {
+    // Opening the room joins it over the socket: answer with the room just created, its creator as host.
+    await mockSocket(page, {
+      'room:join': ({ roomId }) => {
+        const room = api.rooms.find((r) => r.id === roomId);
+        if (!room) throw new Error(`room:join for a room the mock didn't create: ${roomId}`);
+        const { host } = room;
+        const member = {
+          userId: host.id,
+          name: host.name,
+          username: host.username,
+          avatarColor: host.avatarColor,
+          status: 'break' as const,
+          workingOn: '',
+          isHost: true,
+          joinedAt: new Date().toISOString(),
+          focusingSince: null,
+        };
+        return {
+          room: { ...room, memberCount: 1 },
+          members: [member],
+          resources: [],
+          messages: [],
+          serverNow: Date.now(),
+        };
+      },
+    });
     await page.goto('/home');
     await page.getByRole('button', { name: 'Create a room' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Create a study room' });
@@ -115,8 +142,11 @@ test.describe('Home and the app shell', () => {
 
     await expect(page).toHaveURL(/\/room\/room-1$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Torts revision' })).toBeVisible();
-    await expect(page.getByLabel('Invite link')).toHaveValue(/\/r\/aB3xK9_q-2$/);
-    await expect(page.getByRole('button', { name: 'Copy invite' })).toBeVisible();
+    // The room bar has no link field (mockup `#copyInvite`): the invite link is what Copy invite copies.
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByRole('button', { name: 'Copy invite' }).click();
+    await expect(page.getByRole('button', { name: 'Link copied' })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/r\/aB3xK9_q-2$/);
     expect(api.calls.createRoom?.[0]).toMatchObject({
       name: 'Torts revision',
       subject: 'Law',

@@ -41,6 +41,7 @@ describe('toPublicUser', () => {
         'streak',
         'studying',
         'subjects',
+        'timeZone',
         'timerDefaults',
         'username',
         'weeklyGoalMins',
@@ -50,6 +51,7 @@ describe('toPublicUser', () => {
       id: user.id,
       following: [followed.toString()],
       lastStudiedAt: '2026-10-01T10:00:00.000Z',
+      timeZone: 'UTC',
       onboardedAt: null,
       createdAt: '2026-09-01T10:00:00.000Z',
     });

@@ -17,6 +17,11 @@ export interface JoinedRoom {
   resources: RoomResource[];
   messages: ChatMessage[];
   snapshot: TimerSnapshot;
+  /**
+   * When this visit began, in server time (the first join's `serverNow`), so the session summary only shows a
+   * session from this visit. Reconnects keep it; joining again after leaving starts a new visit.
+   */
+  joinedAt: number;
 }
 
 /** Screens shown instead of the room. */
@@ -26,6 +31,8 @@ export type RoomSessionState =
   | { status: 'joining' }
   /** `rejoining`: the connection dropped; the room stays on screen while it reconnects. */
   | { status: 'joined' | 'rejoining'; joined: JoinedRoom }
+  /** You left with Leave. The room as it was stays here for the session summary. */
+  | { status: 'left'; joined: JoinedRoom }
   | { status: EndedStatus }
   | { status: 'error'; message: string };
 
@@ -37,7 +44,11 @@ export type RoomSessionAction =
   | { type: 'presence'; members: PresenceMember[] }
   | { type: 'settings'; settings: RoomSettingsUpdate }
   | { type: 'goals'; goals: RoomGoal[] }
-  | { type: 'removed' };
+  | { type: 'resourceAdded'; resource: RoomResource }
+  | { type: 'resourceRemoved'; resourceId: string }
+  | { type: 'removed' }
+  | { type: 'left' }
+  | { type: 'rejoin' };
 
 const ENDED_BY_CODE: Record<string, EndedStatus> = {
   ROOM_FULL: 'full',
@@ -47,9 +58,15 @@ const ENDED_BY_CODE: Record<string, EndedStatus> = {
 
 export const initialRoomSession: RoomSessionState = { status: 'joining' };
 
-const ENDED: ReadonlySet<RoomSessionState['status']> = new Set(['full', 'closed', 'notFound', 'removed']);
+const ENDED: ReadonlySet<RoomSessionState['status']> = new Set([
+  'left',
+  'full',
+  'closed',
+  'notFound',
+  'removed',
+]);
 
-/** Nothing more to do in this room: don't rejoin on reconnect. */
+/** Nothing more to do in this room: don't rejoin on reconnect, and don't leave again on unmount. */
 export function isEnded(state: RoomSessionState): boolean {
   return ENDED.has(state.status);
 }
@@ -66,9 +83,10 @@ export function roomSessionReducer(state: RoomSessionState, action: RoomSessionA
       return state.status === 'joined' || state.status === 'rejoining' ? state : { status: 'joining' };
     case 'joined': {
       const { room, members, resources, messages, serverNow } = action.data;
+      const joinedAt = state.status === 'rejoining' ? state.joined.joinedAt : serverNow;
       return {
         status: 'joined',
-        joined: { room, members, resources, messages, snapshot: { timer: room.timer, serverNow } },
+        joined: { room, members, resources, messages, snapshot: { timer: room.timer, serverNow }, joinedAt },
       };
     }
     case 'joinFailed': {
@@ -97,7 +115,25 @@ export function roomSessionReducer(state: RoomSessionState, action: RoomSessionA
     }
     case 'goals':
       return updateJoined(state, (joined) => ({ ...joined, room: { ...joined.room, goals: action.goals } }));
+    case 'resourceAdded':
+      return updateJoined(state, (joined) =>
+        // A rejoin's snapshot may already have it.
+        joined.resources.some((resource) => resource.id === action.resource.id)
+          ? joined
+          : { ...joined, resources: [...joined.resources, action.resource] },
+      );
+    case 'resourceRemoved':
+      return updateJoined(state, (joined) => ({
+        ...joined,
+        resources: joined.resources.filter((resource) => resource.id !== action.resourceId),
+      }));
     case 'removed':
       return { status: 'removed' };
+    case 'left':
+      return state.status === 'joined' || state.status === 'rejoining'
+        ? { status: 'left', joined: state.joined }
+        : state;
+    case 'rejoin':
+      return state.status === 'left' ? { status: 'joining' } : state;
   }
 }

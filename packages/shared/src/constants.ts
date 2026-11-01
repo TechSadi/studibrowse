@@ -6,7 +6,7 @@ export const DEFAULT_ROOM_SIZE = 10;
 export const ROOM_NAME_MAX = 60;
 export const ROOM_SUBJECT_MAX = 40;
 export const ROOM_DESCRIPTION_MAX = 200;
-export const GOAL_TEXT_MAX = 80;
+export const GOAL_TEXT_MAX = 120;
 
 /** Invite codes are nanoid's URL-safe alphabet: 64^10 codes, so they can't be guessed. */
 export const INVITE_CODE_LENGTH = 10;
@@ -14,6 +14,15 @@ export const INVITE_CODE_PATTERN = /^[A-Za-z0-9_-]{10}$/;
 
 /** Rooms worth joining loads 3 rows of 3 at a time. */
 export const PUBLIC_ROOMS_PAGE_SIZE = 9;
+
+/** Rows per page of Progress › Session history, and the most GET /api/sessions/mine returns. */
+export const SESSION_HISTORY_PAGE_SIZE = 10;
+/** Home › Your recent sessions. */
+export const RECENT_SESSIONS_COUNT = 3;
+
+/** The ranges GET /api/progress/summary answers for. Weeks run Sunday to Saturday in the user's time zone. */
+export const PROGRESS_RANGES = ['week'] as const;
+export type ProgressRange = (typeof PROGRESS_RANGES)[number];
 
 /** `idle`: not started yet. `done`: every round finished. See docs/ARCHITECTURE.md › Timer. */
 export const TIMER_PHASES = ['idle', 'focus', 'shortBreak', 'longBreak', 'done'] as const;
@@ -35,6 +44,18 @@ export const RECENT_MESSAGES_LIMIT = 50;
 export const MAX_GOALS = 10;
 
 export const MAX_FILE_MB = 10;
+export const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+
+/** File types the Files tab takes, by MIME type, with the format Cloudinary reports for each. */
+export const ALLOWED_FILE_TYPES = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+} as const;
+export type AllowedFileType = keyof typeof ALLOWED_FILE_TYPES;
+export type AllowedFileFormat = (typeof ALLOWED_FILE_TYPES)[AllowedFileType];
 
 /** Avatar swatches offered in onboarding and Settings, in mockup order. */
 export const AVATAR_COLORS = ['green', 'gold', 'blue', 'purple', 'red', 'olive'] as const;
@@ -66,6 +87,11 @@ export const ONBOARDING_SUBJECTS = [
   'Exam prep',
   'Reading',
 ] as const;
+
+/** A user's time zone until their browser reports one. Streak days are counted in it. */
+export const DEFAULT_TIME_ZONE = 'UTC';
+/** Longer than any IANA zone name. */
+export const TIME_ZONE_MAX = 64;
 
 /** "10h Steady", the first weekly goal option in onboarding. */
 export const DEFAULT_WEEKLY_GOAL_MINS = 10 * 60;
@@ -113,6 +139,8 @@ export const TYPING_THROTTLE_MS = 2000;
 export const WORKING_ON_MAX = 80;
 export const RESOURCE_TITLE_MAX = 80;
 export const RESOURCE_URL_MAX = 2048;
+/** The original name of an uploaded file, kept so Download saves it under that name. */
+export const FILE_NAME_MAX = 120;
 
 export const MEMBER_STATUSES = ['focusing', 'break', 'away'] as const;
 export type MemberStatus = (typeof MEMBER_STATUSES)[number];

@@ -52,3 +52,7 @@
 .week i.off {
   background: var(--surface-3);
 }
+
+.noteSkeleton {
+  margin-bottom: 14px;
+}

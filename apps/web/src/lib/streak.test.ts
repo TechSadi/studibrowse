@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { streakView } from './streak';
+import { streakFromUser, streakView } from './streak';
 
 const now = new Date(2026, 9, 30, 18, 0); // Friday 30 October, 6pm local
 const noStreak = { days: 0, studiedToday: false, week: Array(7).fill(false) };
 
 function view(current: number, lastStudiedAt: Date | null) {
   const user = { streak: { current, longest: current }, lastStudiedAt: lastStudiedAt?.toISOString() ?? null };
-  return streakView(user, now);
+  return streakView(streakFromUser(user, now));
 }
 
 describe('streakView', () => {
@@ -34,5 +34,32 @@ describe('streakView', () => {
 
   it('treats a streak whose last session was before yesterday as lapsed', () => {
     expect(view(9, new Date(2026, 9, 28, 12, 0))).toEqual(noStreak);
+  });
+});
+
+describe('streakView from the server’s streak', () => {
+  it('fills back from today or yesterday', () => {
+    expect(streakView({ current: 2, studiedToday: true }).week).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+    ]);
+    expect(streakView({ current: 2, studiedToday: false }).week).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it('shows nothing for a lapsed streak', () => {
+    expect(streakView({ current: 0, studiedToday: false })).toEqual(noStreak);
   });
 });

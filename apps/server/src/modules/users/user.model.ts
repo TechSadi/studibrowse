@@ -1,6 +1,7 @@
 import { model, Schema, type HydratedDocument, type InferSchemaType } from 'mongoose';
 import {
   AVATAR_COLORS,
+  DEFAULT_TIME_ZONE,
   DEFAULT_TIMER,
   DEFAULT_WEEKLY_GOAL_MINS,
   MAX_SUBJECTS,
@@ -62,6 +63,8 @@ const userSchema = new Schema(
     timerDefaults: { type: timerDefaultsSchema, required: true, default: () => ({}) },
     streak: { type: streakSchema, required: true, default: () => ({}) },
     lastStudiedAt: { type: Date, default: null },
+    /** IANA zone the streak's days are counted in, sent by the browser. */
+    timeZone: { type: String, required: true, default: DEFAULT_TIME_ZONE },
     following: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
     notificationPrefs: { type: notificationPrefsSchema, required: true, default: () => ({}) },
     onboardedAt: { type: Date, default: null },

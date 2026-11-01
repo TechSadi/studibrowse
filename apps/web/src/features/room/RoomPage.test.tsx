@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PresenceMember, RoomDetail, RoomJoinData } from '@studibrowse/shared';
+import type { LatestSessionResponse, PresenceMember, RoomDetail, RoomJoinData } from '@studibrowse/shared';
 import { ToastProvider } from '../../components/ui/Toast';
 import { ApiError } from '../../lib/api';
 import { makeUser } from '../../test/renderRoutes';
@@ -39,7 +39,34 @@ vi.mock('../../lib/socket', () => ({
   emitWithAck: (...args: unknown[]) => emitWithAck(...args) as unknown,
 }));
 
+const latestMine = vi.fn();
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  sessionsApi: { latestMine: (...args: unknown[]) => latestMine(...args) as unknown },
+}));
+
 const ROOM = '64b7f0c2a1b2c3d4e5f60718';
+
+function summary(changes: Partial<LatestSessionResponse> = {}): LatestSessionResponse {
+  return {
+    session: {
+      id: 's1',
+      roomName: 'Finals week focus',
+      startedAt: '2026-11-01T10:00:00.000Z',
+      endedAt: null,
+      focusedMins: 100,
+      roundsCompleted: 2,
+      roundsTotal: 4,
+      goalsDone: 2,
+      goalsTotal: 4,
+      peopleCount: 3,
+    },
+    roomOpen: true,
+    week: { focusMins: 620, goalMins: 720 },
+    streakDays: 6,
+    ...changes,
+  };
+}
 
 const member = (userId: string, name: string, changes: Partial<PresenceMember> = {}): PresenceMember => ({
   userId,
@@ -104,7 +131,7 @@ function socketFires(event: 'connect' | 'disconnect') {
 
 function renderRoom(path = `/room/${ROOM}`) {
   return render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <ToastProvider>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
@@ -130,6 +157,7 @@ beforeEach(() => {
   eventHandlers.clear();
   socketStatus = 'connected';
   emitWithAck.mockReset();
+  latestMine.mockReset();
 });
 afterEach(cleanup);
 
@@ -149,7 +177,8 @@ describe('RoomPage', () => {
     expect(screen.queryByRole('button', { name: /Start/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
     expect(screen.getByRole('timer').getAttribute('aria-label')).toBe('Ready to start. Round 1 of 4');
-    expect(document.title).toBe('Finals week focus · StudiBrowse');
+    // Set in an effect after the room renders, which can land a moment later under load.
+    await waitFor(() => expect(document.title).toBe('Finals week focus · StudiBrowse'));
   });
 
   it('sends the invite code for a private room', async () => {
@@ -257,14 +286,64 @@ describe('RoomPage', () => {
     expect(emitWithAck.mock.calls.filter(([event]) => event === 'room:join')).toHaveLength(1);
   });
 
-  it('leaves the room on Leave', async () => {
-    answerJoin(joinData());
-    renderRoom();
-    await screen.findByRole('heading', { level: 1, name: 'Finals week focus' });
+  describe('Leave', () => {
+    async function leave(data: LatestSessionResponse | Error = summary()) {
+      answerJoin(joinData({ serverNow: 1_000 }));
+      if (data instanceof Error) latestMine.mockRejectedValue(data);
+      else latestMine.mockResolvedValue(data);
+      renderRoom();
+      await screen.findByRole('heading', { level: 1, name: 'Finals week focus' });
+      fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
+      return screen.findByRole('dialog', { name: 'Nice session, Alex' });
+    }
 
-    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
-    expect(await screen.findByRole('heading', { name: 'Home page' })).toBeDefined();
-    expect(emitWithAck).toHaveBeenCalledWith('room:leave', { roomId: ROOM });
+    it('leaves the room, then shows the session summary for this visit', async () => {
+      const dialog = await leave();
+      expect(emitWithAck).toHaveBeenCalledWith('room:leave', { roomId: ROOM });
+      expect(within(dialog).getByText('You left Finals week focus. Here’s what you got done.')).toBeDefined();
+      expect(await within(dialog).findByText('1h 40m')).toBeDefined();
+      expect(within(dialog).getByText('2/4')).toBeDefined();
+      expect(within(dialog).getByText('10h 20m of 12h. 6-day streak kept.')).toBeDefined();
+      expect(within(dialog).getByText('86%')).toBeDefined();
+      // Asked only after the leave was saved, and only for this visit.
+      expect(latestMine).toHaveBeenCalledWith(ROOM, 1_000);
+      expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Back to home' }));
+    });
+
+    it('goes home from Back to home', async () => {
+      const dialog = await leave();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Back to home' }));
+      expect(await screen.findByRole('heading', { name: 'Home page' })).toBeDefined();
+      // Leaving the page doesn't send room:leave a second time.
+      expect(emitWithAck.mock.calls.filter(([event]) => event === 'room:leave')).toHaveLength(1);
+    });
+
+    it('goes home on Escape', async () => {
+      const dialog = await leave();
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+      expect(await screen.findByRole('heading', { name: 'Home page' })).toBeDefined();
+    });
+
+    it('joins again from Rejoin the room', async () => {
+      const dialog = await leave();
+      fireEvent.click(await within(dialog).findByRole('button', { name: 'Rejoin the room' }));
+      expect(await screen.findByRole('heading', { level: 1, name: 'Finals week focus' })).toBeDefined();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(emitWithAck.mock.calls.filter(([event]) => event === 'room:join')).toHaveLength(2);
+    });
+
+    it('offers no Rejoin once the room has closed', async () => {
+      const dialog = await leave(summary({ roomOpen: false }));
+      await within(dialog).findByText('1h 40m');
+      expect(within(dialog).queryByRole('button', { name: 'Rejoin the room' })).toBeNull();
+    });
+
+    it('still lets you go home if the summary can’t load', async () => {
+      const dialog = await leave(new ApiError(500, 'INTERNAL_ERROR', 'Something went wrong.'));
+      expect(await within(dialog).findByRole('alert')).toBeDefined();
+      expect(within(dialog).getByRole('button', { name: 'Back to home' })).toBeDefined();
+      expect(within(dialog).queryByRole('button', { name: 'Rejoin the room' })).toBeNull();
+    });
   });
 
   it('switches side panel tabs with the arrow keys', async () => {

@@ -1,12 +1,22 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { CHAT_TEXT_MAX, MAX_FILE_MB, RESOURCE_URL_MAX, WORKING_ON_MAX } from './constants';
+import {
+  CHAT_TEXT_MAX,
+  FILE_NAME_MAX,
+  GOAL_TEXT_MAX,
+  MAX_FILE_MB,
+  RESOURCE_URL_MAX,
+  WORKING_ON_MAX,
+} from './constants';
 import {
   chatSendSchema,
   chatTypingSchema,
   clientEventSchemas,
   goalAddSchema,
+  goalRemoveSchema,
+  goalToggleSchema,
   hostTransferSchema,
   resourceAddSchema,
+  resourceRemoveSchema,
   roomJoinSchema,
   roomSettingsUpdateSchema,
   statusSetSchema,
@@ -30,6 +40,7 @@ describe('clientEventSchemas', () => {
         'host:transfer',
         'member:remove',
         'resource:add',
+        'resource:remove',
         'room:join',
         'room:leave',
         'room:settings',
@@ -124,22 +135,61 @@ describe('goalAddSchema', () => {
     expect(goalAddSchema.safeParse({ roomId, text: 'Finish set 3' }).success).toBe(true);
     expect(goalAddSchema.safeParse({ roomId, text: ' ' }).success).toBe(false);
   });
+
+  it('trims the text and allows up to 120 characters', () => {
+    expect(GOAL_TEXT_MAX).toBe(120);
+    expect(goalAddSchema.parse({ roomId, text: '  Finish set 3 ' })).toEqual({
+      roomId,
+      text: 'Finish set 3',
+    });
+    expect(goalAddSchema.safeParse({ roomId, text: 'x'.repeat(GOAL_TEXT_MAX) }).success).toBe(true);
+    expect(goalAddSchema.safeParse({ roomId, text: 'x'.repeat(GOAL_TEXT_MAX + 1) }).success).toBe(false);
+  });
+
+  it('rejects unknown fields', () => {
+    expect(goalAddSchema.safeParse({ roomId, text: 'Finish set 3', done: true }).success).toBe(false);
+  });
+});
+
+describe.each([
+  ['goalToggleSchema', goalToggleSchema],
+  ['goalRemoveSchema', goalRemoveSchema],
+])('%s', (_, schema) => {
+  const goalId = '64b7f0c2a1b2c3d4e5f60720';
+
+  it('takes a room id and a goal id', () => {
+    expect(schema.safeParse({ roomId, goalId }).success).toBe(true);
+  });
+
+  it('rejects a bad goal id or unknown fields', () => {
+    expect(schema.safeParse({ roomId, goalId: 'goal-1' }).success).toBe(false);
+    expect(schema.safeParse({ roomId }).success).toBe(false);
+    expect(schema.safeParse({ roomId, goalId, done: true }).success).toBe(false);
+  });
 });
 
 describe('resourceAddSchema', () => {
   const link = { roomId, type: 'link', title: 'Notes', url: 'https://example.com/notes' };
+  const file = { ...link, type: 'file', size: 1024, fileName: 'notes.pdf' };
 
-  it('accepts links without a size and files with one', () => {
+  it('accepts links without a size and files with a size and name', () => {
     expect(resourceAddSchema.safeParse(link).success).toBe(true);
-    expect(resourceAddSchema.safeParse({ ...link, type: 'file', size: 1024 }).success).toBe(true);
+    expect(resourceAddSchema.safeParse(file).success).toBe(true);
   });
 
-  it('rejects sizes on links, missing or too-large sizes on files', () => {
+  it('rejects sizes or names on links, missing or too-large sizes on files', () => {
     expect(resourceAddSchema.safeParse({ ...link, size: 10 }).success).toBe(false);
-    expect(resourceAddSchema.safeParse({ ...link, type: 'file' }).success).toBe(false);
-    expect(
-      resourceAddSchema.safeParse({ ...link, type: 'file', size: MAX_FILE_MB * 1024 * 1024 + 1 }).success,
-    ).toBe(false);
+    expect(resourceAddSchema.safeParse({ ...link, fileName: 'notes.pdf' }).success).toBe(false);
+    expect(resourceAddSchema.safeParse({ ...link, type: 'file', fileName: 'notes.pdf' }).success).toBe(false);
+    expect(resourceAddSchema.safeParse({ ...file, size: MAX_FILE_MB * 1024 * 1024 + 1 }).success).toBe(false);
+  });
+
+  it('requires a file name of a sane length on files', () => {
+    expect(resourceAddSchema.safeParse({ ...file, fileName: undefined }).success).toBe(false);
+    expect(resourceAddSchema.safeParse({ ...file, fileName: '   ' }).success).toBe(false);
+    expect(resourceAddSchema.safeParse({ ...file, fileName: 'a'.repeat(FILE_NAME_MAX + 1) }).success).toBe(
+      false,
+    );
   });
 
   it('only accepts http(s) urls of a sane length', () => {
@@ -147,6 +197,19 @@ describe('resourceAddSchema', () => {
     expect(resourceAddSchema.safeParse({ ...link, url: 'not a url' }).success).toBe(false);
     const long = `https://example.com/${'a'.repeat(RESOURCE_URL_MAX)}`;
     expect(resourceAddSchema.safeParse({ ...link, url: long }).success).toBe(false);
+  });
+});
+
+describe('resourceRemoveSchema', () => {
+  const resourceId = '64b7f0c2a1b2c3d4e5f6071a';
+
+  it('takes a room id and a resource id', () => {
+    expect(resourceRemoveSchema.safeParse({ roomId, resourceId }).success).toBe(true);
+  });
+
+  it('rejects a bad resource id or unknown fields', () => {
+    expect(resourceRemoveSchema.safeParse({ roomId, resourceId: 'r1' }).success).toBe(false);
+    expect(resourceRemoveSchema.safeParse({ roomId, resourceId, url: 'https://x.y' }).success).toBe(false);
   });
 });
 

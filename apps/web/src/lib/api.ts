@@ -8,8 +8,11 @@ import type {
   ForgotPasswordResponse,
   GoogleAuthInput,
   InvitePreviewResponse,
+  LatestSessionResponse,
   LoginInput,
   MeResponse,
+  MySessionsResponse,
+  ProgressSummaryResponse,
   PublicRoomsQuery,
   PublicRoomsResponse,
   ResetPasswordInput,
@@ -17,6 +20,8 @@ import type {
   SignupInput,
   SuggestionsResponse,
   UpdateMeInput,
+  UploadSignInput,
+  UploadSignResponse,
   UsernameAvailabilityResponse,
 } from '@studibrowse/shared';
 
@@ -199,4 +204,22 @@ export const roomsApi = {
     request<RoomResponse>('GET', `/api/rooms/${encodeURIComponent(roomId)}`, { auth: true }),
   invite: (code: string) =>
     request<InvitePreviewResponse>('GET', `/api/rooms/invite/${encodeURIComponent(code)}`),
+  signUpload: (roomId: string, input: UploadSignInput) =>
+    request<UploadSignResponse>('POST', `/api/rooms/${encodeURIComponent(roomId)}/uploads/sign`, {
+      body: input,
+      auth: true,
+    }),
+};
+
+export const sessionsApi = {
+  mine: ({ cursor, limit }: { cursor?: string | undefined; limit?: number } = {}) =>
+    request<MySessionsResponse>('GET', `/api/sessions/mine${queryString({ cursor, limit })}`, { auth: true }),
+  latestMine: (roomId: string, since?: number) =>
+    request<LatestSessionResponse>('GET', `/api/sessions/mine/latest${queryString({ roomId, since })}`, {
+      auth: true,
+    }),
+};
+
+export const progressApi = {
+  summary: () => request<ProgressSummaryResponse>('GET', '/api/progress/summary?range=week', { auth: true }),
 };

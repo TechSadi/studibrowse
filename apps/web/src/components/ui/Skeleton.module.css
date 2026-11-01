@@ -1,0 +1,17 @@
+.skeleton {
+  display: block;
+  max-width: 100%;
+  background: var(--surface-3);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

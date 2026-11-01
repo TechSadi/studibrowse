@@ -4,14 +4,6 @@ import { LogoutButton } from '../features/auth/LogoutButton';
 
 // TODO: each of these is replaced by its real screen in a later phase-1 step.
 
-export function ProgressPage() {
-  return (
-    <ComingSoon title="Your progress">
-      This week against your goal, your streak, focus time by day and your session history.
-    </ComingSoon>
-  );
-}
-
 export function NotificationsPage() {
   return (
     <ComingSoon title="Notifications">

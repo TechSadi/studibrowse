@@ -1,14 +1,16 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FollowedUser, PublicUser } from '@studibrowse/shared';
+import type { FollowedUser, ProgressSummaryResponse, PublicUser } from '@studibrowse/shared';
 import { setAccessToken } from '../../lib/api';
+import { makeSummary } from '../../test/progressFixtures';
 import { makeUser, renderRoutes } from '../../test/renderRoutes';
 
 let user: PublicUser | null;
 let following: FollowedUser[] | 'error' | 'pending';
+let summary: ProgressSummaryResponse | 'error';
 
 function fakeFetch(input: string, init: RequestInit = {}) {
-  const route = `${init.method ?? 'GET'} ${input}`;
+  const route = `${init.method ?? 'GET'} ${input.split('?')[0]}`;
   if (route === 'POST /api/auth/refresh') {
     return user
       ? Response.json({ accessToken: 'token', user })
@@ -21,6 +23,13 @@ function fakeFetch(input: string, init: RequestInit = {}) {
     }
     return Response.json({ users: following });
   }
+  if (route === 'GET /api/progress/summary') {
+    if (summary === 'error') {
+      return Response.json({ error: { code: 'INTERNAL', message: 'Please try again.' } }, { status: 500 });
+    }
+    return Response.json(summary);
+  }
+  if (route === 'GET /api/sessions/mine') return Response.json({ sessions: [], nextCursor: null });
   throw new Error(`Unexpected request: ${route}`);
 }
 
@@ -29,6 +38,7 @@ const sidebar = () => screen.getByRole('complementary', { name: 'Sidebar' });
 beforeEach(() => {
   user = makeUser();
   following = [];
+  summary = makeSummary();
   vi.stubGlobal('fetch', vi.fn(fakeFetch));
 });
 
@@ -80,10 +90,27 @@ describe('AppShell', () => {
   it('shows the streak and your profile', async () => {
     renderRoutes('/home');
     await screen.findByRole('heading', { level: 1, name: /Alex/ });
-    expect(within(sidebar()).getByText('No streak yet')).toBeDefined();
+    expect(await within(sidebar()).findByText('No streak yet')).toBeDefined();
     const me = within(sidebar()).getByRole('link', { name: /Alex Smith/ });
     expect(me.getAttribute('href')).toBe('/settings');
     expect(within(me).getByText('alex@example.com')).toBeDefined();
+  });
+
+  it('shows the streak from your progress, counted on the server', async () => {
+    summary = makeSummary({ streak: { current: 4, longest: 9, studiedToday: false } });
+    renderRoutes('/home');
+    await screen.findByRole('heading', { level: 1, name: /Alex/ });
+    expect(await within(sidebar()).findByText('4-day streak')).toBeDefined();
+    expect(within(sidebar()).getByText('One session today keeps it going.')).toBeDefined();
+  });
+
+  it('falls back to your saved streak when progress can’t load', async () => {
+    summary = 'error';
+    user = makeUser({ streak: { current: 3, longest: 3 }, lastStudiedAt: new Date().toISOString() });
+    renderRoutes('/home');
+    await screen.findByRole('heading', { level: 1, name: /Alex/ });
+    expect(await within(sidebar()).findByText('3-day streak')).toBeDefined();
+    expect(within(sidebar()).getByText('You studied today. Nice work.')).toBeDefined();
   });
 
   describe('People you follow', () => {
