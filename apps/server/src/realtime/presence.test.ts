@@ -4,7 +4,7 @@ import {
   addSocket,
   applyPhaseStatus,
   countMembers,
-  focusCredits,
+  drainFocus,
   fullRoomIds,
   hasConnectedSockets,
   isMember,
@@ -16,6 +16,7 @@ import {
   removeSocket,
   resetPresence,
   roomsOfSocket,
+  setFocusRunning,
   setHost,
   setStatus,
 } from './presence';
@@ -28,7 +29,13 @@ function join(
   roomId: string,
   userId: string,
   socketId: string,
-  { maxSize = 20, now = at(0), status = 'focusing' as MemberStatus, hostId = 'host' } = {},
+  {
+    maxSize = 20,
+    now = at(0),
+    status = 'focusing' as MemberStatus,
+    hostId = 'host',
+    focusRunning = false,
+  } = {},
 ) {
   return addSocket(roomId, socketId, {
     userId,
@@ -36,6 +43,7 @@ function join(
     status,
     maxSize,
     hostId,
+    focusRunning,
     now,
   });
 }
@@ -203,25 +211,124 @@ describe('applyPhaseStatus', () => {
   });
 });
 
-describe('focusCredits', () => {
-  it('credits Focusing members from focusingSince, capped at how long the phase ran', () => {
-    join('room-1', 'maya', 's1', { status: 'focusing', now: at(0) });
-    join('room-1', 'jordan', 's2', { status: 'focusing', now: at(1200) });
-    join('room-1', 'alex', 's3', { status: 'away', now: at(0) });
-    join('room-1', 'sam', 's4', { status: 'break', now: at(0) });
+describe('focus accrual', () => {
+  const MIN = 60_000;
+  const atMin = (minutes: number) => new Date(minutes * MIN);
+  const credits = (minutes: number, userId?: string) =>
+    Object.fromEntries(
+      drainFocus('room-1', atMin(minutes), userId).map((c) => [c.userId, c.focusedMs / MIN]),
+    );
 
-    expect(focusCredits('room-1', at(1500), 1_500_000 - 60_000)).toEqual([
-      { userId: 'maya', focusedMs: 1_440_000 },
-      { userId: 'jordan', focusedMs: 300_000 },
-    ]);
+  /** A focus phase running from `startMin`, with everyone listed already in the room and Focusing. */
+  function focusFrom(startMin: number, ...userIds: string[]) {
+    userIds.forEach((userId) => join('room-1', userId, `s-${userId}`, { now: atMin(0), status: 'focusing' }));
+    setFocusRunning('room-1', true, atMin(startMin));
+  }
+
+  it('credits a whole focus round to everyone who was there for it', () => {
+    focusFrom(0, 'maya', 'jordan');
+    setFocusRunning('room-1', false, atMin(25));
+    expect(credits(25)).toEqual({ maya: 25, jordan: 25 });
   });
 
-  it('leaves out anyone with no time to credit', () => {
-    join('room-1', 'maya', 's1', { status: 'focusing', now: at(100) });
-    expect(focusCredits('room-1', at(100), 60_000)).toEqual([]);
-    expect(focusCredits('missing', at(100), 60_000)).toEqual([]);
+  it('never credits the same time twice', () => {
+    focusFrom(0, 'maya');
+    expect(credits(10)).toEqual({ maya: 10 });
+    expect(credits(10)).toEqual({});
+    expect(credits(25)).toEqual({ maya: 15 });
   });
 
+  it('credits a late joiner only from when they arrived', () => {
+    focusFrom(0, 'maya');
+    join('room-1', 'jordan', 's-jordan', { now: atMin(18) });
+    expect(credits(25)).toEqual({ maya: 25, jordan: 7 });
+  });
+
+  it('starts counting a room’s first joiner when its timer is already in focus', () => {
+    join('room-1', 'maya', 's1', { now: atMin(0) });
+    expect(credits(5)).toEqual({});
+
+    resetPresence();
+    join('room-1', 'maya', 's1', { now: atMin(3), focusRunning: true });
+    expect(credits(5)).toEqual({ maya: 2 });
+  });
+
+  it('leaves out paused time', () => {
+    focusFrom(0, 'maya');
+    setFocusRunning('room-1', false, atMin(10)); // pause
+    setFocusRunning('room-1', true, atMin(40)); // resume half an hour later
+    expect(credits(55)).toEqual({ maya: 25 });
+  });
+
+  it('counts nothing during a break', () => {
+    join('room-1', 'maya', 's1', { status: 'break', now: atMin(0) });
+    applyPhaseStatus('room-1', 'shortBreak', atMin(0));
+    expect(credits(5)).toEqual({});
+  });
+
+  it('follows the phase: counts from when focus begins and stops when the break starts', () => {
+    join('room-1', 'maya', 's1', { status: 'break', now: atMin(0) });
+    // A break ends at minute 5 and focus round 2 starts.
+    applyPhaseStatus('room-1', 'focus', atMin(5));
+    setFocusRunning('room-1', true, atMin(5));
+    // It ends at 30 and the next break starts.
+    setFocusRunning('room-1', false, atMin(30));
+    applyPhaseStatus('room-1', 'shortBreak', atMin(30));
+    expect(credits(35)).toEqual({ maya: 25 });
+  });
+
+  it('stops counting while someone is Away and starts again when they are back', () => {
+    focusFrom(0, 'maya');
+    setStatus('room-1', 'maya', { status: 'away' }, atMin(5));
+    setStatus('room-1', 'maya', { status: 'focusing' }, atMin(15));
+    // A note change alone doesn't touch the count.
+    setStatus('room-1', 'maya', { workingOn: 'Essay' }, atMin(20));
+    expect(credits(25)).toEqual({ maya: 15 });
+  });
+
+  it('banks the time of someone leaving mid-focus, for a drain of just them', () => {
+    focusFrom(0, 'maya', 'jordan');
+    removeSocket('room-1', 'jordan', 's-jordan', atMin(12));
+    // Asked later (the save runs after they left), they still get exactly the 12 minutes they were there.
+    expect(credits(20, 'jordan')).toEqual({ jordan: 12 });
+    removeMember('room-1', 'jordan');
+    expect(credits(25)).toEqual({ maya: 25 });
+  });
+
+  it('stops counting while someone’s connection is down and resumes when they reconnect', () => {
+    focusFrom(0, 'maya');
+    removeSocket('room-1', 'maya', 's-maya', atMin(10));
+    expect(credits(12)).toEqual({ maya: 10 });
+    // Back inside the reconnect window: same place, counting again from now.
+    expect(join('room-1', 'maya', 's-maya-2', { now: atMin(14) })).toBe('rejoined');
+    expect(credits(25)).toEqual({ maya: 11 });
+  });
+
+  it('keeps counting while one of several tabs is still open', () => {
+    focusFrom(0, 'maya');
+    join('room-1', 'maya', 's-maya-2', { now: atMin(1) });
+    removeSocket('room-1', 'maya', 's-maya', atMin(5));
+    expect(credits(25)).toEqual({ maya: 25 });
+  });
+
+  it('does not double count someone who leaves and comes back in the same phase', () => {
+    focusFrom(0, 'maya');
+    removeSocket('room-1', 'maya', 's-maya', atMin(8));
+    expect(credits(8, 'maya')).toEqual({ maya: 8 });
+    removeMember('room-1', 'maya');
+    // The room emptied, so rejoining brings it back with the timer's state, as room:join does.
+    join('room-1', 'maya', 's-maya-2', { now: atMin(20), focusRunning: true });
+    expect(credits(25)).toEqual({ maya: 5 });
+  });
+
+  it('gives nothing for a room or person it doesn’t know', () => {
+    expect(drainFocus('missing', atMin(5))).toEqual([]);
+    focusFrom(0, 'maya');
+    expect(drainFocus('room-1', atMin(5), 'jordan')).toEqual([]);
+  });
+});
+
+describe('memberPreview', () => {
   it('previews the first people in, longest present first, with only name and colour', () => {
     join('room-1', 'maya', 's1', { now: at(30) });
     join('room-1', 'jordan', 's2', { now: at(10) });

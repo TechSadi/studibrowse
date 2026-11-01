@@ -22,6 +22,8 @@ const baseUser: PublicUser = {
   timerDefaults: { focusMins: 25, shortBreakMins: 5, longBreakMins: 15, roundsBeforeLong: 4, totalRounds: 4 },
   streak: { current: 0, longest: 0 },
   lastStudiedAt: null,
+  // The browser's own zone, so the app has no reason to send it.
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   following: [],
   notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
   onboardedAt: null,

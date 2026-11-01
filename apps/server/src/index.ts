@@ -20,8 +20,8 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 const storage = createStorageService(env);
 const app = createApp({ isDatabaseConnected, clientOrigin: env.CLIENT_ORIGIN, storage });
 const httpServer = createServer(app);
-const roomHandlers = createRoomHandlers();
 const roomTimer = createRoomTimer();
+const roomHandlers = createRoomHandlers({ onDepart: roomTimer.memberLeaving });
 const io = createIo(httpServer, {
   clientOrigin: env.CLIENT_ORIGIN,
   registerHandlers: [
@@ -40,7 +40,7 @@ httpServer.listen(env.PORT, () => {
 let stopRoomCleanup: (() => void) | undefined;
 // The first connection only: Mongoose reconnects by itself after that.
 mongoose.connection.once('connected', () => {
-  stopRoomCleanup = startRoomCleanup({ storage });
+  stopRoomCleanup = startRoomCleanup({ storage, finalizeRun: roomTimer.finalizeOnClose });
   // Timers keep running in the database while the server is down; pick them up again.
   roomTimer
     .restore(io)

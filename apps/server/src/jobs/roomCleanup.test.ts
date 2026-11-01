@@ -4,7 +4,9 @@ import { Message } from '../modules/chat/message.model';
 import { Resource } from '../modules/resources/resource.model';
 import { Room } from '../modules/rooms/room.model';
 import { createRoom, getInvitePreview } from '../modules/rooms/rooms.service';
+import { Session } from '../modules/sessions/session.model';
 import { addSocket, resetPresence } from '../realtime/presence';
+import { createRoomTimer } from '../realtime/roomTimer';
 import { createUserWithToken } from '../test/authHelpers';
 import { createFakeStorage, type FakeStorage } from '../test/fakeStorage';
 import { useTestDatabase } from '../test/testDb';
@@ -63,6 +65,44 @@ describe('closeEmptyRooms', () => {
     expect(await Message.countDocuments({ roomId: room.id })).toBe(0);
     expect(await Resource.countDocuments({ roomId: room.id })).toBe(0);
     expect(await getInvitePreview(room.inviteCode!)).toMatchObject({ status: 'closed' });
+  });
+
+  it('logs a run that was still going, ending when the room emptied, with its goals counted', async () => {
+    const { room, userId } = await roomEmptySince(minutesAgo(6));
+    await Room.updateOne(
+      { _id: room.id },
+      {
+        'goals.0.done': true,
+        timer: { phase: 'focus', round: 2, endsAt: null, pausedRemaining: 60_000 },
+        run: {
+          sessionId: '64b7f0c2a1b2c3d4e5f60718',
+          startedAt: minutesAgo(60),
+          focus: [
+            { userId, focusedMs: 40 * 60_000, firstFocusAt: minutesAgo(60), lastFocusAt: minutesAgo(6) },
+          ],
+          roundsCompleted: 1,
+        },
+      },
+    );
+    const roomTimer = createRoomTimer({ now: () => now });
+
+    await closeEmptyRooms(storage, now, roomTimer.finalizeOnClose);
+
+    const session = (await Session.findById('64b7f0c2a1b2c3d4e5f60718').lean())!;
+    expect(session).toMatchObject({ endedAt: minutesAgo(6), goalsDone: 1, roundsCompleted: 1 });
+    expect(session.participants.map((p) => p.focusedMins)).toEqual([40]);
+    expect((await Room.findById(room.id).lean())!).toMatchObject({
+      closedAt: now,
+      totalSessions: 1,
+      totalFocusMins: 40,
+      run: { startedAt: null, focus: [] },
+    });
+  });
+
+  it('closes the room even if logging its run fails', async () => {
+    const { room } = await roomEmptySince(minutesAgo(6));
+    const failing = () => Promise.reject(new Error('database hiccup'));
+    expect(await closeEmptyRooms(storage, now, failing)).toEqual([room.id]);
   });
 
   it('deletes the stored files of the rooms it closes, shared or not', async () => {

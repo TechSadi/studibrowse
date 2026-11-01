@@ -79,6 +79,11 @@ export const ONBOARDING_SUBJECTS = [
   'Reading',
 ] as const;
 
+/** A user's time zone until their browser reports one. Streak days are counted in it. */
+export const DEFAULT_TIME_ZONE = 'UTC';
+/** Longer than any IANA zone name. */
+export const TIME_ZONE_MAX = 64;
+
 /** "10h Steady", the first weekly goal option in onboarding. */
 export const DEFAULT_WEEKLY_GOAL_MINS = 10 * 60;
 

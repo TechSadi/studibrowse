@@ -40,6 +40,7 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     },
     streak: { current: 0, longest: 0 },
     lastStudiedAt: null,
+    timeZone: 'UTC',
     following: [],
     notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',

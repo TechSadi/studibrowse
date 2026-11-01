@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AuthResponse, PublicUser } from '@studibrowse/shared';
-import { authApi, refreshSession, setAccessToken, setSessionEndedHandler } from '../../lib/api';
+import { authApi, refreshSession, setAccessToken, setSessionEndedHandler, usersApi } from '../../lib/api';
 import { connectSocket, disconnectSocket } from '../../lib/socket';
 
 type AuthState =
@@ -21,6 +21,14 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const SIGNED_OUT = { status: 'signedOut', user: null } as const;
+
+function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -56,6 +64,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setUser = useCallback((user: PublicUser) => {
     setState((current) => (current.status === 'signedIn' ? { status: 'signedIn', user } : current));
   }, []);
+
+  // The server counts streak days in the user's time zone, so keep the saved one in step with this browser.
+  // A failure just leaves the old zone until the next load.
+  const savedTimeZone = state.user?.timeZone;
+  useEffect(() => {
+    const timeZone = browserTimeZone();
+    if (!savedTimeZone || !timeZone || timeZone === savedTimeZone) return;
+    let active = true;
+    usersApi.updateMe({ timeZone }).then(
+      (response) => active && setUser(response.user),
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [savedTimeZone, setUser]);
 
   const logout = useCallback(async () => {
     // Logging out locally must work even if the request fails (offline); the server answers 204 regardless.

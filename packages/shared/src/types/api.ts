@@ -31,6 +31,8 @@ export interface PublicUser {
   streak: { current: number; longest: number };
   /** ISO timestamp, or null before the first logged session. */
   lastStudiedAt: string | null;
+  /** IANA time zone the streak's days are counted in. The web app keeps it in step with the browser. */
+  timeZone: string;
   /** Ids of the people this user follows. */
   following: string[];
   notificationPrefs: NotificationPrefs;

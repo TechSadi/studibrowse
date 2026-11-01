@@ -25,6 +25,8 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     },
     streak: { current: 0, longest: 0 },
     lastStudiedAt: null,
+    // The browser's own zone, so the app has no reason to send it.
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     following: [],
     notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',

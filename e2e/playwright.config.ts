@@ -13,6 +13,8 @@ export default defineConfig({
   use: {
     baseURL: WEB_URL,
     trace: 'on-first-retry',
+    // Matches the accounts' saved zone (mock and real), so the app doesn't send a time zone update.
+    timezoneId: 'UTC',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [

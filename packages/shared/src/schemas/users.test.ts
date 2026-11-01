@@ -22,6 +22,13 @@ describe('updateMeSchema', () => {
     expect(updateMeSchema.safeParse({}).success).toBe(false);
   });
 
+  it('accepts IANA time zones and UTC', () => {
+    expect(updateMeSchema.parse({ timeZone: 'America/Los_Angeles' })).toEqual({
+      timeZone: 'America/Los_Angeles',
+    });
+    expect(updateMeSchema.parse({ timeZone: 'UTC' })).toEqual({ timeZone: 'UTC' });
+  });
+
   it('trims and de-duplicates subjects', () => {
     expect(updateMeSchema.parse({ subjects: [' Maths', 'Maths ', 'Law'] }).subjects).toEqual([
       'Maths',
@@ -34,6 +41,8 @@ describe('updateMeSchema', () => {
     ['a long "studying" note', { studying: 'x'.repeat(81) }],
     ['too many subjects', { subjects: Array.from({ length: 11 }, (_, i) => `S${i}`) }],
     ['an empty subject', { subjects: ['  '] }],
+    ['an unknown time zone', { timeZone: 'Mars/Olympus' }],
+    ['a time zone that is too long', { timeZone: 'x'.repeat(65) }],
     ['a weekly goal under an hour', { weeklyGoalMins: 30 }],
     ['a weekly goal over 40 hours', { weeklyGoalMins: 41 * 60 }],
     ['a fractional weekly goal', { weeklyGoalMins: 90.5 }],

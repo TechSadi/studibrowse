@@ -40,11 +40,13 @@ const timerSchema = new Schema(
 );
 
 /**
- * Focus time credited during the current run (start → done), for the session log. Internal: never serialised.
- * See docs/ARCHITECTURE.md › Timer.
+ * The current run (start → done or reset): focus time credited so far and rounds finished, for its session log.
+ * Internal: never serialised. See docs/ARCHITECTURE.md › Sessions.
  */
 const runSchema = new Schema(
   {
+    /** The id its session document gets, so a partial save and the final one write the same document. */
+    sessionId: { type: Schema.Types.ObjectId, default: null },
     startedAt: { type: Date, default: null },
     focus: {
       type: [
@@ -52,12 +54,16 @@ const runSchema = new Schema(
           {
             userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
             focusedMs: { type: Number, required: true, min: 0 },
+            // When their focus was first and last credited, so a run across midnight counts both days.
+            firstFocusAt: { type: Date, required: true },
+            lastFocusAt: { type: Date, required: true },
           },
           { _id: false },
         ),
       ],
       default: [],
     },
+    roundsCompleted: { type: Number, required: true, default: 0 },
   },
   { _id: false },
 );

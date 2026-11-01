@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { TimerSettings } from '@studibrowse/shared';
 import { Room } from '../../modules/rooms/room.model';
 import { createRoom } from '../../modules/rooms/rooms.service';
+import { Session } from '../../modules/sessions/session.model';
+import { User } from '../../modules/users/user.model';
 import {
   emitAck,
   nextEvent,
@@ -20,10 +22,15 @@ useTestDatabase();
 
 const MIN = 60_000;
 
-// The room timer's clock runs `skewMs` ahead of the real one, so a test can let minutes "pass" instantly.
+// The server's clock runs `skewMs` ahead of the real one, so a test can let minutes "pass" instantly.
 let skewMs = 0;
-const roomHandlers = createRoomHandlers({ reconnectGraceMs: 200 });
-const roomTimer = createRoomTimer({ now: () => new Date(Date.now() + skewMs) });
+const clock = () => new Date(Date.now() + skewMs);
+const roomTimer = createRoomTimer({ now: clock });
+const roomHandlers = createRoomHandlers({
+  reconnectGraceMs: 200,
+  onDepart: roomTimer.memberLeaving,
+  now: clock,
+});
 let server: TestSocketServer;
 
 beforeAll(async () => {
@@ -203,16 +210,16 @@ describe('timer commands', () => {
     skewMs = 10 * MIN;
     await command(host, roomId, 'timer:skip');
 
-    const focus = (await storedRoom(roomId)).run!.focus.map(({ userId, focusedMs }) => ({
-      userId: userId.toString(),
-      focusedMs,
-    }));
-    expect(focus.map((credit) => credit.userId).sort()).toEqual([host.user.id, guests[0]!.user.id].sort());
-    for (const credit of focus) {
+    const focus = new Map(
+      (await storedRoom(roomId)).run!.focus.map(({ userId, focusedMs }) => [userId.toString(), focusedMs]),
+    );
+    for (const member of [host, guests[0]!]) {
       // Ten skewed minutes plus the few real milliseconds the test took.
-      expect(credit.focusedMs).toBeGreaterThanOrEqual(10 * MIN);
-      expect(credit.focusedMs).toBeLessThan(10 * MIN + 1000);
+      expect(focus.get(member.user.id)).toBeGreaterThanOrEqual(10 * MIN);
+      expect(focus.get(member.user.id)).toBeLessThan(10 * MIN + 1000);
     }
+    // Away from the moment the run began: only the real milliseconds before status:set landed.
+    expect(focus.get(guests[1]!.user.id) ?? 0).toBeLessThan(1000);
   });
 
   it('answers INVALID_TIMER_COMMAND for a command that does not fit the timer', async () => {
@@ -302,6 +309,141 @@ describe('phase changes', () => {
       round: 1,
       endsAt: new Date(endsAt.getTime() + 5 * MIN).toISOString(),
       pausedRemaining: null,
+    });
+  });
+});
+
+const participantsOf = async (sessionId: string) =>
+  ((await Session.findById(sessionId).lean())?.participants ?? []).map(({ userId, focusedMins }) => ({
+    userId: userId.toString(),
+    focusedMins,
+  }));
+
+describe('session logging', () => {
+  it('logs the run when the last round ends, with room totals and streaks', async () => {
+    const { host, guests, roomId } = await roomWith(1, { totalRounds: 1 });
+    await command(host, roomId, 'timer:start');
+
+    const state = nextEvent(host.client, 'timer:state');
+    const logged = nextEvent(host.client, 'session:logged');
+    // The 25-minute focus round has ended: reschedule so the timeout fires now.
+    skewMs = 25 * MIN + 100;
+    await roomTimer.restore(server.io);
+
+    expect((await state).timer.phase).toBe('done');
+    const payload = await logged;
+    expect(payload).toEqual({
+      roomId,
+      session: { id: expect.any(String) as unknown, roundsCompleted: 1, goalsDone: 0, participants: 2 },
+      totalSessions: 1,
+      totalFocusMins: 50,
+    });
+    expect(await participantsOf(payload.session.id)).toEqual(
+      expect.arrayContaining([
+        { userId: host.user.id, focusedMins: 25 },
+        { userId: guests[0]!.user.id, focusedMins: 25 },
+      ]),
+    );
+    expect((await Session.findById(payload.session.id).lean())!.endedAt).toBeInstanceOf(Date);
+    const room = await storedRoom(roomId);
+    expect(room).toMatchObject({ totalSessions: 1, totalFocusMins: 50 });
+    // The run is over: the next start begins a new one.
+    expect(room.run).toMatchObject({ startedAt: null, focus: [] });
+    for (const member of [host, guests[0]!]) {
+      expect((await User.findById(member.user.id).lean())!.streak).toEqual({ current: 1, longest: 1 });
+    }
+  });
+
+  it('logs the run when the host resets it, without the paused time', async () => {
+    const { host, guests, roomId } = await roomWith(1);
+    await command(host, roomId, 'timer:start');
+    skewMs = 10 * MIN;
+    await command(host, roomId, 'timer:pause');
+    skewMs = 40 * MIN;
+    await command(host, roomId, 'timer:start');
+    skewMs = 45 * MIN;
+
+    const logged = nextEvent(guests[0]!.client, 'session:logged');
+    await command(host, roomId, 'timer:reset');
+    expect(await logged).toMatchObject({
+      session: { roundsCompleted: 0, participants: 2 },
+      totalSessions: 1,
+      totalFocusMins: 30,
+    });
+  });
+
+  it('counts skipped focus rounds as completed', async () => {
+    const { host, roomId } = await roomWith(0, { autoStart: true });
+    await command(host, roomId, 'timer:start');
+    skewMs = 5 * MIN;
+    await command(host, roomId, 'timer:skip');
+    const logged = nextEvent(host.client, 'session:logged');
+    await command(host, roomId, 'timer:reset');
+    expect(await logged).toMatchObject({
+      session: { roundsCompleted: 1, participants: 1 },
+      totalFocusMins: 5,
+    });
+  });
+
+  it('logs nothing for a run nobody focused a minute in', async () => {
+    const { host, roomId } = await roomWith(1);
+    await command(host, roomId, 'timer:start');
+    skewMs = 50_000;
+    const noLog = nextEvent(host.client, 'session:logged', 300);
+    await command(host, roomId, 'timer:reset');
+
+    await expect(noLog).rejects.toThrow('No session:logged');
+    expect(await Session.countDocuments()).toBe(0);
+    expect(await storedRoom(roomId)).toMatchObject({ totalSessions: 0, totalFocusMins: 0 });
+  });
+
+  it('saves the focus time of someone who leaves mid-focus at once, in the run’s one session', async () => {
+    const { host, guests, roomId } = await roomWith(1);
+    const guest = guests[0]!;
+    await command(host, roomId, 'timer:start');
+
+    skewMs = 12 * MIN;
+    expect(await emitAck(guest.client, 'room:leave', { roomId })).toEqual({ ok: true, data: {} });
+
+    const [partial] = await Session.find().lean();
+    expect(partial).toMatchObject({ endedAt: null });
+    expect(await participantsOf(partial!._id.toString())).toEqual([
+      { userId: guest.user.id, focusedMins: 12 },
+    ]);
+    expect((await User.findById(guest.user.id).lean())!).toMatchObject({ streak: { current: 1 } });
+
+    skewMs = 20 * MIN;
+    const logged = nextEvent(host.client, 'session:logged');
+    await command(host, roomId, 'timer:reset');
+    const payload = await logged;
+    // The same document, finished, with the leaver's 12 minutes kept.
+    expect(payload.session.id).toBe(partial!._id.toString());
+    expect(payload).toMatchObject({ session: { participants: 2 }, totalFocusMins: 32 });
+    expect(await Session.countDocuments()).toBe(1);
+    expect(await participantsOf(payload.session.id)).toEqual(
+      expect.arrayContaining([
+        { userId: guest.user.id, focusedMins: 12 },
+        { userId: host.user.id, focusedMins: 20 },
+      ]),
+    );
+  });
+
+  it('saves focus time up to when someone’s connection dropped, once their reconnect window ends', async () => {
+    const { host, guests, roomId } = await roomWith(1);
+    await command(host, roomId, 'timer:start');
+
+    skewMs = 7 * MIN;
+    guests[0]!.client.disconnect();
+    // The window is 200 ms in these tests; minutes pass on the server's clock meanwhile.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    skewMs = 15 * MIN;
+
+    await vi.waitFor(async () => {
+      const [partial] = await Session.find().lean();
+      expect(partial).toBeDefined();
+      expect(await participantsOf(partial!._id.toString())).toEqual([
+        { userId: guests[0]!.user.id, focusedMins: 7 },
+      ]);
     });
   });
 });

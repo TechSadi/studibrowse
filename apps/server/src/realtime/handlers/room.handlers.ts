@@ -15,9 +15,11 @@ import {
   addSocket,
   getHostId,
   hasConnectedSockets,
+  isMember,
   isSocketInRoom,
   listMembers,
   longestPresentMember,
+  memberSocketCount,
   removeMember,
   removeSocket,
   roomsOfSocket,
@@ -29,6 +31,13 @@ import { roomChannel, type HandlerRegistrar, type TypedServer, type TypedSocket 
 export interface RoomHandlerOptions {
   /** How long someone whose last tab dropped keeps their place. Tests shorten it. */
   reconnectGraceMs?: number;
+  /**
+   * Runs when someone leaves for good, before they are taken out of presence, so their focus time can be
+   * saved (the room timer's memberLeaving). A failure is logged and doesn't stop them leaving.
+   */
+  onDepart?: (roomId: string, userId: string, at: Date) => Promise<void>;
+  /** The clock. Tests share one with the room timer. */
+  now?: () => Date;
 }
 
 export interface RoomHandlers {
@@ -40,6 +49,8 @@ export interface RoomHandlers {
 /** room:join, room:leave, status:set, and what a dropped connection does to presence. */
 export function createRoomHandlers({
   reconnectGraceMs = RECONNECT_GRACE_MS,
+  onDepart,
+  now = () => new Date(),
 }: RoomHandlerOptions = {}): RoomHandlers {
   const pendingDepartures = new Map<string, NodeJS.Timeout>();
   const departureKey = (roomId: string, userId: string) => `${roomId}:${userId}`;
@@ -53,6 +64,12 @@ export function createRoomHandlers({
   /** Someone left for good: by room:leave, or when the reconnect window ran out. */
   async function depart(io: TypedServer, roomId: string, userId: string): Promise<void> {
     cancelDeparture(roomId, userId);
+    if (!isMember(roomId, userId)) return;
+    await onDepart?.(roomId, userId, now()).catch((err: unknown) =>
+      logger.error({ err, roomId, userId }, 'failed to save focus time for someone leaving'),
+    );
+    // They may have come back in another tab while their focus time was saved; then they stay.
+    if (memberSocketCount(roomId, userId) > 0) return;
     const wasHost = getHostId(roomId) === userId;
     if (!removeMember(roomId, userId)) return;
     const nextHost = wasHost ? longestPresentMember(roomId) : null;
@@ -62,8 +79,8 @@ export function createRoomHandlers({
   }
 
   /** One socket is out of the room. If it was the last one anywhere, the grace period starts. */
-  async function afterSocketLeft(roomId: string, now: Date): Promise<void> {
-    if (!hasConnectedSockets(roomId)) await markRoomEmpty(roomId, now);
+  async function afterSocketLeft(roomId: string, at: Date): Promise<void> {
+    if (!hasConnectedSockets(roomId)) await markRoomEmpty(roomId, at);
   }
 
   const register: HandlerRegistrar = (io, socket) => {
@@ -80,7 +97,8 @@ export function createRoomHandlers({
         status: statusForPhase(room.timer.phase),
         maxSize: room.maxSize,
         hostId: room.hostId.toString(),
-        now: new Date(),
+        focusRunning: room.timer.phase === 'focus' && room.timer.endsAt !== null,
+        now: now(),
       });
       if (outcome === 'full') throw roomFull();
       cancelDeparture(roomId, userId);
@@ -89,21 +107,21 @@ export function createRoomHandlers({
       if (wasEmpty) await markRoomOccupied(roomId);
       const snapshot = await getRoomSnapshot(joinable, userId);
       broadcastPresence(io, roomId);
-      return { ...snapshot, members: listMembers(roomId), serverNow: Date.now() };
+      return { ...snapshot, members: listMembers(roomId), serverNow: now().getTime() };
     });
 
     onEvent(io, socket, 'room:leave', async ({ roomId }, { userId }) => {
       requireSocketInRoom(roomId, socket);
       void socket.leave(roomChannel(roomId));
       // An explicit leave skips the reconnect window, but only once every tab of theirs has left.
-      if (removeSocket(roomId, userId, socket.id) === 0) await depart(io, roomId, userId);
-      await afterSocketLeft(roomId, new Date());
+      if (removeSocket(roomId, userId, socket.id, now()) === 0) await depart(io, roomId, userId);
+      await afterSocketLeft(roomId, now());
       return {};
     });
 
     onEvent(io, socket, 'status:set', ({ roomId, status, workingOn }, { userId }) => {
       requireSocketInRoom(roomId, socket);
-      setStatus(roomId, userId, { status, workingOn }, new Date());
+      setStatus(roomId, userId, { status, workingOn }, now());
       broadcastPresence(io, roomId);
       return {};
     });
@@ -111,9 +129,9 @@ export function createRoomHandlers({
     // A disconnect is not a leave: a refresh or a dropped connection gets reconnectGraceMs to come back.
     socket.on('disconnect', () => {
       const { userId } = socket.data;
-      const now = new Date();
+      const at = now();
       for (const roomId of roomsOfSocket(socket.id)) {
-        if (removeSocket(roomId, userId, socket.id) === 0) {
+        if (removeSocket(roomId, userId, socket.id, at) === 0) {
           cancelDeparture(roomId, userId);
           const timer = setTimeout(() => {
             pendingDepartures.delete(departureKey(roomId, userId));
@@ -124,7 +142,7 @@ export function createRoomHandlers({
           timer.unref();
           pendingDepartures.set(departureKey(roomId, userId), timer);
         }
-        afterSocketLeft(roomId, now).catch((err: unknown) =>
+        afterSocketLeft(roomId, at).catch((err: unknown) =>
           logger.error({ err, roomId }, 'failed to mark a room empty'),
         );
       }

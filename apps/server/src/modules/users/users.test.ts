@@ -86,6 +86,15 @@ describe('PATCH /api/users/me', () => {
     });
   });
 
+  it('saves the browser’s time zone, which starts as UTC', async () => {
+    const { user, token } = await createUserWithToken();
+    expect((await User.findById(user.id))?.timeZone).toBe('UTC');
+    const res = await patchMe(token, { timeZone: 'Asia/Tokyo' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.timeZone).toBe('Asia/Tokyo');
+    expect((await User.findById(user.id))?.timeZone).toBe('Asia/Tokyo');
+  });
+
   it('sets onboardedAt once and keeps the first timestamp', async () => {
     const { user, token } = await createUserWithToken();
     const first = await patchMe(token, { onboarded: true });
@@ -102,6 +111,7 @@ describe('PATCH /api/users/me', () => {
     ['an unknown field', { email: 'new@example.com' }],
     ['an out-of-range timer', { timerDefaults: { focusMins: 120 } }],
     ['an unknown colour', { avatarColor: 'pink' }],
+    ['an unknown time zone', { timeZone: 'Mars/Olympus' }],
   ])('rejects %s with 400 VALIDATION_ERROR', async (_, body) => {
     const { token } = await createUserWithToken();
     const res = await patchMe(token, body);

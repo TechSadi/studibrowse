@@ -4,6 +4,7 @@ import {
   MAX_SUBJECTS,
   STUDYING_MAX,
   SUBJECT_MAX,
+  TIME_ZONE_MAX,
   TIMER_LIMITS,
   WEEKLY_GOAL_MAX_MINS,
   WEEKLY_GOAL_MIN_MINS,
@@ -39,6 +40,22 @@ const subjectsSchema = z
   .max(MAX_SUBJECTS, `Pick at most ${MAX_SUBJECTS} subjects.`)
   .transform((subjects) => [...new Set(subjects)]);
 
+/** Whether `Intl` knows the zone (an IANA name such as `Europe/London`, or `UTC`). */
+export function isValidTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The browser's IANA time zone, which the server uses to count streak days. */
+export const timeZoneSchema = z
+  .string()
+  .max(TIME_ZONE_MAX, 'That time zone is not recognised.')
+  .refine(isValidTimeZone, 'That time zone is not recognised.');
+
 /**
  * PATCH /api/users/me. Every field is optional, but the body can't be empty. Strict, so fields that need
  * their own flow (email, username, password) can't be changed through it.
@@ -54,6 +71,7 @@ export const updateMeSchema = z
       .min(WEEKLY_GOAL_MIN_MINS, 'Set a weekly goal of at least 1 hour.')
       .max(WEEKLY_GOAL_MAX_MINS, `Weekly goals can be at most ${WEEKLY_GOAL_MAX_MINS / 60} hours.`),
     timerDefaults: timerDefaultsSchema.partial(),
+    timeZone: timeZoneSchema,
     /** Finishes (or skips) onboarding. The server sets onboardedAt the first time only. */
     onboarded: z.literal(true),
   })
