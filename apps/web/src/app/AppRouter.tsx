@@ -1,7 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router';
-import { WelcomePage } from '../features/welcome/WelcomePage';
+import { routes } from './routes';
 
-const router = createBrowserRouter([{ path: '/', element: <WelcomePage /> }]);
+const router = createBrowserRouter(routes);
 
 export function AppRouter() {
   return <RouterProvider router={router} />;

@@ -1,0 +1,63 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stepper > span {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.stepper > div {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.stepper button {
+  width: 34px;
+  height: 40px;
+  color: var(--ink-2);
+  font-size: 18px;
+  flex: none;
+}
+
+.stepper button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.stepper button:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+/* The group clips overflow, so draw the focus ring inside the button. */
+.stepper button:focus-visible {
+  outline-offset: -2px;
+}
+
+.stepper output {
+  flex: 1;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 14px;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

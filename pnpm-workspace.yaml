@@ -5,6 +5,8 @@ packages:
 
 # pnpm only runs install scripts that are listed here.
 allowBuilds:
+  # Ships prebuilt binaries (node-gyp-build); its fallback compile step isn't needed.
+  bcrypt: false
   # esbuild (used by Vite, tsx and tsup) fetches its native binary.
   esbuild: true
   # Downloads the mongod binary used by server tests, so the first test run doesn't stall.

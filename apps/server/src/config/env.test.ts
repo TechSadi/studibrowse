@@ -7,17 +7,49 @@ const valid = {
   MONGODB_URI: 'mongodb://localhost:27017/studibrowse',
   CLIENT_ORIGIN: 'http://localhost:5173',
   LOG_LEVEL: 'warn',
+  JWT_ACCESS_SECRET: 'a-production-secret-of-at-least-32-chars',
+  ACCESS_TOKEN_TTL_SECONDS: '600',
+  REFRESH_TOKEN_TTL_DAYS: '14',
+  BCRYPT_COST: '13',
+  GOOGLE_CLIENT_ID: 'client-id.apps.googleusercontent.com',
+  RESEND_API_KEY: 're_test_key',
+  EMAIL_FROM: 'StudiBrowse <hello@studibrowse.app>',
 };
 
 describe('parseEnv', () => {
-  it('parses valid values and coerces PORT to a number', () => {
+  it('parses valid values and coerces numbers', () => {
     const result = parseEnv(valid);
-    expect(result).toEqual({ ok: true, env: { ...valid, PORT: 8080 } });
+    expect(result).toEqual({
+      ok: true,
+      env: {
+        ...valid,
+        PORT: 8080,
+        ACCESS_TOKEN_TTL_SECONDS: 600,
+        REFRESH_TOKEN_TTL_DAYS: 14,
+        BCRYPT_COST: 13,
+      },
+    });
   });
 
-  it('defaults NODE_ENV, PORT and LOG_LEVEL', () => {
-    const result = parseEnv({ MONGODB_URI: valid.MONGODB_URI, CLIENT_ORIGIN: valid.CLIENT_ORIGIN });
-    expect(result.ok && result.env).toMatchObject({ NODE_ENV: 'development', PORT: 4000, LOG_LEVEL: 'info' });
+  it('defaults NODE_ENV, PORT, LOG_LEVEL and the auth settings', () => {
+    const result = parseEnv({
+      MONGODB_URI: valid.MONGODB_URI,
+      CLIENT_ORIGIN: valid.CLIENT_ORIGIN,
+      JWT_ACCESS_SECRET: valid.JWT_ACCESS_SECRET,
+    });
+    expect(result.ok && result.env).toMatchObject({
+      NODE_ENV: 'development',
+      PORT: 4000,
+      LOG_LEVEL: 'info',
+      ACCESS_TOKEN_TTL_SECONDS: 900,
+      REFRESH_TOKEN_TTL_DAYS: 30,
+      BCRYPT_COST: 12,
+    });
+  });
+
+  it('rejects a short JWT secret', () => {
+    const result = parseEnv({ ...valid, JWT_ACCESS_SECRET: 'too-short' });
+    expect(result.ok).toBe(false);
   });
 
   it('rejects an unknown LOG_LEVEL', () => {
@@ -29,9 +61,28 @@ describe('parseEnv', () => {
     const result = parseEnv({});
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.problems).toHaveLength(2);
+    expect(result.problems).toHaveLength(3);
     expect(result.problems[0]).toMatch(/^MONGODB_URI /);
     expect(result.problems[1]).toMatch(/^CLIENT_ORIGIN /);
+    expect(result.problems[2]).toMatch(/^JWT_ACCESS_SECRET /);
+  });
+
+  it.each(['GOOGLE_CLIENT_ID', 'RESEND_API_KEY', 'EMAIL_FROM'])('requires %s in production', (key) => {
+    const result = parseEnv({ ...valid, [key]: undefined });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problems).toEqual([`${key} is required in production`]);
+  });
+
+  it('leaves the Google and email settings optional outside production', () => {
+    const result = parseEnv({
+      NODE_ENV: 'development',
+      MONGODB_URI: valid.MONGODB_URI,
+      CLIENT_ORIGIN: valid.CLIENT_ORIGIN,
+      JWT_ACCESS_SECRET: valid.JWT_ACCESS_SECRET,
+      GOOGLE_CLIENT_ID: '',
+    });
+    expect(result.ok && result.env.GOOGLE_CLIENT_ID).toBeUndefined();
   });
 
   it('rejects a MongoDB URI with the wrong scheme', () => {

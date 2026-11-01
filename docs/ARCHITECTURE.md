@@ -23,7 +23,8 @@ For things requested once: auth, profiles, room lists, history.
 ```
 web (TanStack Query → fetch /api/...)
   → Vite proxy (dev) / same origin (prod)
-  → Express: request logger → helmet → CORS → JSON body (100 kB) → rate limit (/api/auth)
+  → Express: request logger → helmet → CORS → JSON body (100 kB) → cookies
+             (the password, email and Google auth endpoints are also rate limited)
   → router (modules/<feature>/*.routes.ts)  validates input with the shared zod schema
   → controller                              reads req, calls the service, writes res
   → service                                 business logic + Mongoose; never sees req/res
@@ -31,7 +32,7 @@ web (TanStack Query → fetch /api/...)
 Errors at any step → errorHandler → { error: { code, message } }  (no stack traces)
 ```
 
-Protected routes run an auth middleware before the router that reads `Authorization: Bearer <access token>` and sets the user.
+Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `Authorization: Bearer <access token>` and sets `req.userId`.
 
 ## Request flow: Socket.IO
 
@@ -51,20 +52,100 @@ A handler that fails validation or a permission check acks `{ error: { code, mes
 
 ## Auth
 
-Built in Phase 1. Two tokens:
+Built in Phase 1 (`modules/auth`, `modules/users`). Two tokens:
 
-- **Access token:** a short-lived JWT (about 15 minutes) holding the user id. The web app keeps it in memory only, never in localStorage. It is sent as a Bearer header on REST calls and in the socket handshake.
-- **Refresh token:** a long-lived random token in an `httpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/auth`. The server stores only its hash so it can be revoked.
+- **Access token:** a JWT (HS256, `ACCESS_TOKEN_TTL_SECONDS`, 15 minutes by default) whose `sub` is the user id. The web app keeps it in memory only, never in localStorage. It is sent as a Bearer header on REST calls and in the socket handshake.
+- **Refresh token:** 32 random bytes in the `sb_refresh` cookie (`httpOnly`, `Secure`, `SameSite=Lax`, path `/api/auth`). The server stores only its SHA-256 hash in the `refreshtokens` collection (`userId`, `familyId`, `tokenHash`, `persistent`, `expiresAt` with a TTL index, `usedAt`), so it can be revoked. It lasts `REFRESH_TOKEN_TTL_DAYS` (30 by default) from the last refresh.
+
+Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails are stored lowercased, so their unique indexes are case-insensitive. Users leave the server only through `toPublicUser()` (`modules/users/user.serializer.ts`), which copies an explicit list of fields; `passwordHash` is also `select: false` on the model.
+
+| Endpoint | Does | Errors |
+| --- | --- | --- |
+| `POST /api/auth/signup` | Creates the account (shared `signupSchema`), sets the cookie, returns `{ accessToken, user }` (201) | 400 `VALIDATION_ERROR`, 409 `EMAIL_TAKEN` / `USERNAME_TAKEN` |
+| `POST /api/auth/login` | `identifier` is an email if it contains `@`, otherwise a username (shared `loginSchema`) | 401 `INVALID_CREDENTIALS` (same for unknown accounts, wrong passwords and Google-only accounts) |
+| `POST /api/auth/refresh` | Rotates the cookie, returns `{ accessToken, user }` | 401 `UNAUTHENTICATED`, 401 `REFRESH_TOKEN_REUSED`; the cookie is cleared on any failure |
+| `POST /api/auth/logout` | Deletes the session's tokens and clears the cookie (204, also without a cookie) | none |
+| `GET /api/auth/me` | `{ user }` for the access token | 401 `UNAUTHENTICATED`, 401 `TOKEN_EXPIRED` |
+| `POST /api/auth/forgot` | Emails a reset link if an account uses the email (shared `forgotPasswordSchema`). Always 200 `{ ok: true }` | 400 `VALIDATION_ERROR`, 429 `RATE_LIMITED` |
+| `POST /api/auth/reset` | Sets a new password from a reset link and signs the account out everywhere (204) (shared `resetPasswordSchema`) | 400 `RESET_TOKEN_INVALID` (unknown, used or expired) |
+| `POST /api/auth/google` | Verifies a Google ID token, then signs in, links or creates the account. Sets the cookie, returns `{ accessToken, user }`: 201 for a new account, 200 otherwise (shared `googleAuthSchema`) | 401 `GOOGLE_TOKEN_INVALID`, 409 `GOOGLE_ACCOUNT_CONFLICT`, 503 `GOOGLE_NOT_CONFIGURED` |
+| `GET /api/users/username-available?u=` | `{ available }`, for the live check on Sign up | 400 `VALIDATION_ERROR` |
+| `PATCH /api/users/me` | Updates your own profile and settings (shared `updateMeSchema`: `avatarColor`, `studying`, `subjects`, `weeklyGoalMins`, `timerDefaults` merged per field, and `onboarded: true`, which sets `onboardedAt` the first time only). Strict: unknown fields such as `email` are rejected. Returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
+| `GET /api/users/me/following` | `{ users }`: the people you follow, in the order you followed them, for the sidebar. Each is a `FollowedUser` (`toFollowedUser()`: id, name, username, avatarColor). Deleted accounts are left out | 401 |
+| `GET /api/users/suggestions` | `{ users }`: up to 5 people for onboarding's Follow step, the most recently active first (`lastStudiedAt`, then `updatedAt`). Only people who finished onboarding, never you. Each is a `SuggestedUser` (`toSuggestedUser()`: no email or settings) | 401 |
+| `POST /api/users/:id/follow` | Adds the person to your `following` (idempotent), returns `{ user }` | 400 `VALIDATION_ERROR` (bad id), 400 `CANNOT_FOLLOW_SELF`, 404 `USER_NOT_FOUND`, 401 |
+| `DELETE /api/users/:id/follow` | Removes the person from your `following` (idempotent, also for deleted accounts), returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
+
+Rate limits (`middleware/rateLimit.ts`, in memory):
+
+- **Per IP:** 20 requests per 15 minutes, shared by signup, login, forgot, reset and google. Refresh and `/me` aren't limited because they run on every page load.
+- **Per account:** login allows 10 *failed* attempts per identifier per 15 minutes, and forgot allows 3 requests per email per hour. These limiters key on the normalised body, so they run after validation. Any string counts the same whether or not an account uses it, so a 429 reveals nothing. The trade-off: someone can block password login for an account for 15 minutes. Google sign-in and password reset still work for its owner.
+
+### Password reset
+
+1. `POST /forgot` looks the email up. If no account uses it, nothing happens. Otherwise it deletes the user's older reset tokens (only the newest link works), stores the SHA-256 hash of a new 32-byte token in `passwordresettokens` (`userId`, `tokenHash`, `expiresAt` = 30 minutes (`RESET_TOKEN_TTL_MINS`) with a TTL index, `usedAt`), and emails `${CLIENT_ORIGIN}/reset-password#token=<token>`. The token is in the fragment so it never reaches a server log or a Referer header. The email is sent without awaiting it, so timing and provider errors don't reveal whether the account exists. Google-only accounts get a link too.
+2. `POST /reset` marks the token used with one atomic update (so it works once, even under a race), sets the bcrypt hash and deletes all of the user's refresh tokens and reset tokens.
+3. Access tokens already issued stay valid until they expire (15 minutes at most). This is a known v1 limitation.
+
+Email goes through the `EmailService` interface (`lib/email/`). In production it uses Resend (one `fetch` to its API, with `RESEND_API_KEY` and `EMAIL_FROM`). Everywhere else the email is printed to the server log, so the reset link can be copied from there. Tests inject a recording fake through `createApp({ emailService })`.
+
+### Google sign-in
+
+The web app gets an ID token from Google Identity Services and posts it to `POST /google`. The server verifies it with google-auth-library (signature, issuer, expiry, audience = `GOOGLE_CLIENT_ID`) and requires `email_verified`. Then:
+
+1. A user with this `googleId` → sign in.
+2. Otherwise, a user with this email → link Google to it. We never verify emails at sign-up, so a password on that account may belong to someone who registered the address first. Linking therefore **removes the password and deletes every refresh and reset token** for the account. The owner can set a password again with Forgot password. If that account is already linked to a different Google id → 409 `GOOGLE_ACCOUNT_CONFLICT`.
+3. Otherwise, create the account with the Google name and a suggested username (`modules/users/suggestUsername.ts`: the email's local part, reduced to `[a-z0-9_]`, plus random digits if it's taken). `onboardedAt` is null, so the client sends the user to onboarding, and they can change the username later.
+
+A duplicate-key race (two tabs signing up at once, or someone taking the suggested username) reruns the lookup once. Without `GOOGLE_CLIENT_ID` (allowed outside production) the endpoint answers 503. Tests inject a fake verifier through `createApp({ verifyGoogleToken })`.
 
 Flow:
 
 1. Sign up, log in or Google sign-in → the server sets the refresh cookie and returns an access token.
 2. On page load, the app calls `POST /api/auth/refresh` (the cookie is sent automatically) to get a fresh access token.
-3. When a REST call returns 401, the client refreshes once and retries. A socket rejected with an expired token reconnects with a new one.
-4. Refresh rotates the token: the old one is invalidated and a new cookie is set. Reusing an old refresh token revokes the whole session.
-5. Log out deletes the stored refresh token and clears the cookie.
+3. When a REST call returns 401 `TOKEN_EXPIRED`, the client refreshes once and retries. A socket rejected with an expired token reconnects with a new one.
+4. Refresh rotates the token: the old one is marked used and a new one in the same family is set as the cookie. Presenting a used token again revokes the whole family (that login on that device), not the user's other devices.
+5. Log out deletes the session's tokens and clears the cookie.
 
-"Keep me logged in" decides whether the cookie is persistent or a session cookie. The new env vars (JWT secret, token lifetimes) are added to `env.ts` and `.env.example` in Phase 1.
+"Keep me logged in" decides whether the cookie is persistent (`Max-Age`) or a session cookie; the choice is carried through every rotation. It defaults to on for sign-up and off for log in, matching the forms.
+
+Because each refresh token works exactly once, two tabs refreshing with the same cookie at the same moment would trip reuse detection. The web client must make sure only one refresh is in flight across tabs.
+
+### Web client (`apps/web`)
+
+- **Token storage:** `src/lib/api.ts` keeps the access token in a module variable, in memory only (never localStorage). All requests go through its `request()`, and the typed `authApi` / `usersApi` wrap the endpoints.
+- **One refresh at a time:** `refreshSession()` is single-flight inside a tab (concurrent callers share one promise, which also covers React StrictMode running the startup effect twice). Across tabs it runs inside a Web Lock (`navigator.locks`, name `sb-refresh`), so tabs refresh one after another and each sends the newest cookie.
+- **Expired tokens:** an authenticated call that gets 401 `TOKEN_EXPIRED` refreshes once and retries once. If that refresh fails, the session ends and the app treats the user as signed out.
+- **Session state:** `features/auth/AuthContext.tsx` restores the session on load (`loading` → `signedIn` or `signedOut`) and exposes `signIn`, `setUser` (swap in the `user` a profile or follow request returned) and `logout`.
+- **Route guards** (`features/auth/guards.tsx`):
+  - `PublicOnlyRoute` wraps `/`, `/signup`, `/login` and `/forgot-password`. Signed-in users go to `resolveSignedInPath(user, next)`: `/onboarding` until `onboardedAt` is set, otherwise the `?next=` path (same-site paths only) or `/home`.
+  - `RequireAuth` sends signed-out visitors to `/login?next=…`, or to `/` right after they log out.
+  - Inside it, `RequireOnboarded` wraps the app pages (`/home`, `/progress`, `/notifications`, `/settings`, `/u/:username` and `/room/:roomId`) and sends accounts without `onboardedAt` to `/onboarding?next=…`. `OnboardingRoute` wraps `/onboarding` and sends finished accounts on to `next` or `/home`. Finishing onboarding is just `setUser` with the new `onboardedAt`: the guard does the redirect.
+- **Routes** live in `src/app/routes.tsx` (tests mount the same table in a memory router).
+- **App shell** (`components/layout/AppShell.tsx`): the layout route for every signed-in page except the focus room. Sidebar (264px; an 80px icon rail from 768 to 1100px) with the menu, People you follow (`GET /api/users/me/following`, refetched when `user.following` changes), the streak card (`lib/streak.ts` works out the days from `streak` and `lastStudiedAt`) and your profile. Below 768px the sidebar becomes a bottom tab bar (Home, Create, Progress, Settings) and a slim header. Each route's `handle.crumb` names the page in the top bar's breadcrumb and the tab title. The top-bar search filters Home's live rooms through the `?q=` param (`/` focuses it). Create a room opens through `/home?create=1` (`features/home/useCreateRoomDialog.ts`).
+- **Onboarding** (`features/onboarding/`): each Continue saves that step's answers with `PATCH /api/users/me`; follows are saved on click. The current step is kept in localStorage (`sb-onboarding:<userId>`), so a refresh reopens it with the saved answers. "Skip for now" and "Start studying" both send `onboarded: true`.
+  - `/reset-password` and `/r/:inviteCode` work in either state. Any other path shows the 404 page.
+- **Reset links:** the page reads the token from the URL fragment (`#token=…`) and then removes it from the address bar.
+- **Google sign-in:** the web app renders Google's own button with Google Identity Services, with the same `GOOGLE_CLIENT_ID` from the repo-root `.env`: `vite.config.ts` passes it to the browser as `VITE_GOOGLE_CLIENT_ID` (a client id is public), unless `VITE_GOOGLE_CLIENT_ID` is set to override it. Only `src/lib/config.ts` reads it. Without a client id the button shows as unavailable.
+
+## Rooms (`modules/rooms/`)
+
+Endpoints (all bodies, queries and params are validated with the shared zod schemas in `packages/shared/src/schemas/rooms.ts`):
+
+| Endpoint | Auth | What it does |
+| --- | --- | --- |
+| `POST /api/rooms` | signed in | `createRoomSchema`: name (≤ 60), subject (optional, ≤ 40), description (optional, ≤ 200), `isPublic`, `maxSize` 2 to 20, up to 10 goals (≤ 80 each), `timerSettings` (the `TIMER_LIMITS` ranges, plus `autoStart`). The creator becomes the host. Answers 201 with the `RoomDetail`. |
+| `GET /api/rooms/public` | signed in | Rooms worth joining. `page` (9 per page, `nextPage` is null on the last), `subject` (exact, any case), `q` (name or subject contains, plain text), `filter` = `all`, `open` (has space), `focus` or `break`. |
+| `GET /api/rooms/:id` | signed in | One room. |
+| `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview: name, subject, host, member count, size, timer and goal texts. No ids or codes. 404 `ROOM_NOT_FOUND`, 410 `ROOM_CLOSED`. |
+
+- **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts paused at a full first focus round: `{ phase: 'focus', round: 1, endsAt: null, pausedRemaining: focusMins }`.
+- **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission.
+- **Order:** rooms hosted by people you follow first, then newest (`$addFields hostFollowed` in an aggregation, with the host joined by `$lookup`). Rooms whose host account is gone are left out.
+- **Phase filters** count only running timers: a paused or not-yet-started room is neither "In a focus round" nor "On a break".
+- **Invite codes:** `nanoid(10)` (URL-safe alphabet, cryptographic randomness, 64^10 codes), unique index, retried on the rare collision. `INVITE_CODE_PATTERN` in shared is the one definition of a valid code; the Home join box uses it too.
+- **Member counts** come from the in-memory presence store (`realtime/presence.ts`). Until sockets join rooms, every room reports 0. "Has space" leaves out `fullRoomIds()` in the database query, so paging stays correct.
+- **Web:** `roomsApi` in `lib/api.ts`. `features/rooms/CreateRoomDialog.tsx` (rendered by Home while `?create=1` is set, starting from your timer defaults) creates the room, seeds the `['rooms', id]` query and opens `/room/:id`. That route is a placeholder (`RoomPlaceholderPage`) that shows the invite link with a copy button until the focus room arrives. `features/home/LiveRooms.tsx` loads pages with `useInfiniteQuery` keyed by filter, `q` and `?subject=` (a card's subject tag sets it). `features/rooms/timerText.ts` works out a card's "N min left" from `endsAt`, and the cards redraw every 30 seconds. `components/ui/Modal.tsx` is the shared dialog: Escape and backdrop close it, Tab stays inside, and focus returns to the opener.
 
 ## Timer: the server owns it
 

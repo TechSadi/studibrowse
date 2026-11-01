@@ -1,0 +1,29 @@
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.chip:focus-visible {
+  border-radius: 99px;
+}
+
+.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}

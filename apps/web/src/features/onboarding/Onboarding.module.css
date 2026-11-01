@@ -1,0 +1,265 @@
+/* #view-onboarding in the mockup. */
+.onb {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px max(20px, env(safe-area-inset-right, 0px)) 48px max(20px, env(safe-area-inset-left, 0px));
+}
+
+.top {
+  width: min(640px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 40px;
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+}
+
+.steps i {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  transition: background 0.2s;
+}
+
+.steps i.stepOn {
+  background: var(--accent);
+}
+
+.card {
+  width: min(640px, 100%);
+  padding: 36px;
+  border-radius: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.title {
+  margin-top: 8px;
+  font-size: clamp(26px, 3vw, 32px);
+  line-height: 1.15;
+}
+
+.title:focus {
+  outline: 0;
+}
+
+.sub {
+  color: var(--muted);
+  margin: 8px 0 28px;
+}
+
+.body {
+  display: grid;
+  gap: 22px;
+}
+
+.lbl {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--ink-2);
+}
+
+.lbl small {
+  font-weight: 500;
+  color: var(--faint);
+}
+
+.setAvatar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Weekly goal cards. */
+.goalPick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.goalPick button {
+  padding: 16px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  text-align: center;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.goalPick button:focus-visible {
+  border-radius: 14px;
+}
+
+.goalPick b {
+  display: block;
+  font-family: var(--display);
+  font-size: 22px;
+}
+
+.goalPick small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.goalPick button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.timerSet {
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+}
+
+.timerSet .lbl {
+  margin: 0;
+}
+
+/* Suggested people. */
+.suggest {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sug {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.sug:first-child {
+  border-top: 0;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.sug b {
+  display: block;
+  font-weight: 600;
+}
+
+.sug small {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Not in the mockup: loading, empty and error states for suggestions. */
+.skeleton {
+  display: block;
+  background: var(--surface-3);
+  animation: skeletonPulse 1.2s ease-in-out infinite alternate;
+}
+
+.skeletonAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.skeletonLine {
+  height: 12px;
+  width: 45%;
+  border-radius: 6px;
+}
+
+.skeletonLine + .skeletonLine {
+  margin-top: 8px;
+}
+
+.skeletonShort {
+  width: 70%;
+}
+
+@keyframes skeletonPulse {
+  from {
+    opacity: 0.55;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.notice {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.notice b {
+  color: var(--ink);
+}
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.skip {
+  margin-right: auto;
+}
+
+.skip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 680px) {
+  .card {
+    padding: 24px 20px;
+  }
+
+  .goalPick {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Back, Skip and "Start studying" don't fit on one line at phone width: the main action gets its own row. */
+@media (max-width: 480px) {
+  .foot {
+    flex-wrap: wrap;
+  }
+
+  .next {
+    flex: 1 0 100%;
+  }
+}

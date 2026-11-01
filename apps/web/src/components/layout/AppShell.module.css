@@ -1,0 +1,60 @@
+/* Sidebar 264px wide, an 80px icon rail from 768-1100px, and a bottom tab bar below 768px. */
+.shell {
+  min-height: 100vh;
+  min-height: 100svh;
+  padding-left: 264px;
+}
+
+.main {
+  padding-bottom: 80px;
+}
+
+.main:focus {
+  outline: none;
+}
+
+.wrap {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+}
+
+.skip {
+  position: fixed;
+  z-index: 60;
+  top: 12px;
+  left: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: none;
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .shell {
+    padding-left: 80px;
+  }
+}
+
+@media (max-width: 767px) {
+  .shell {
+    padding-left: 0;
+  }
+
+  .main {
+    padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .wrap {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+}

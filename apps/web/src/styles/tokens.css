@@ -1,0 +1,113 @@
+/*
+ * Design tokens, copied from docs/design/studibrowse-mockup.html.
+ * Dark is the base theme; light overrides it via data-theme="light" on <html> (set before first paint in index.html).
+ */
+:root {
+  --bg: #0b1210;
+  --bg-raise: #0e1714;
+  --surface: #121b18;
+  --surface-2: #16211d;
+  --surface-3: #1d2a25;
+  --line: #1f2c27;
+  --line-strong: #2b3a34;
+  --ink: #ecf2ef;
+  --ink-2: #c3cfca;
+  --muted: #8fa19a;
+  --faint: #64766f;
+  --accent: #4cbf98;
+  --accent-hover: #62cda8;
+  --accent-ink: #06120e;
+  --accent-soft: rgba(76, 191, 152, 0.13);
+  --violet: #7cb7ff;
+  --violet-soft: rgba(124, 183, 255, 0.14);
+  --amber: #e0a95a;
+  --amber-soft: rgba(224, 169, 90, 0.13);
+  --good: #55c993;
+  --good-soft: rgba(85, 201, 147, 0.12);
+  --away: #5f716a;
+  --danger: #f07a7a;
+  /* Badge outlines and the "Room is full" count. The mockup keeps these the same in both themes. */
+  --good-line: rgba(85, 201, 147, 0.22);
+  --danger-soft: rgba(240, 122, 122, 0.12);
+  --av1: #173a30;
+  --av1i: #8fdcbf;
+  --av2: #3a2c16;
+  --av2i: #ecc483;
+  --av3: #1b2a40;
+  --av3i: #9ebde6;
+  --av4: #2c2140;
+  --av4i: #c6aeea;
+  --av5: #3d201a;
+  --av5i: #efa898;
+  --av6: #25321a;
+  --av6i: #b5d58e;
+  --display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --body: 'Hanken Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px -16px rgba(0, 0, 0, 0.7);
+  --wash: 255 255 255;
+  --glass: rgba(11, 18, 16, 0.82);
+  --glass-strong: rgba(11, 18, 16, 0.94);
+  --scrim: rgba(3, 8, 6, 0.72);
+  --dot: rgba(178, 206, 195, 0.14);
+  --r: 16px;
+  --r-lg: 22px;
+
+  /* Decorative glows. The mockup keeps these mint/amber in both themes. */
+  --glow-mint: 127 209 178;
+  --glow-accent: 76 191 152;
+  --glow-amber: 224 169 90;
+  --shadow-primary: 0 8px 24px -10px rgba(76, 191, 152, 0.7);
+  --shadow-shot: 0 40px 80px -30px rgba(0, 0, 0, 0.8);
+  /* Google's "G" on the Continue with Google button (same in both themes). */
+  --brand-google: #ea4335;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #f4f6f5;
+  --bg-raise: #fbfcfb;
+  --surface: #ffffff;
+  --surface-2: #f6f8f7;
+  --surface-3: #e9eeeb;
+  --line: #e1e7e4;
+  --line-strong: #cfd8d4;
+  --ink: #121a17;
+  --ink-2: #3a4742;
+  --muted: #5f6d68;
+  --faint: #87958f;
+  --accent: #1d6b57;
+  --accent-hover: #175a49;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(29, 107, 87, 0.1);
+  --violet: #2f6fd0;
+  --violet-soft: rgba(47, 111, 208, 0.1);
+  --amber: #a86c1c;
+  --amber-soft: #f8eedf;
+  --good: #1a7f52;
+  --good-soft: #e1f3ea;
+  --away: #97a39e;
+  --danger: #c2413b;
+  --av1: #dbeee6;
+  --av1i: #1d6b57;
+  --av2: #f6e7cf;
+  --av2i: #8a5a17;
+  --av3: #dde7f5;
+  --av3i: #2f5487;
+  --av4: #ebe2f4;
+  --av4i: #5d3f86;
+  --av5: #f5e0dc;
+  --av5i: #94402f;
+  --av6: #e3ecd8;
+  --av6i: #4d6b25;
+  --shadow: 0 1px 2px rgba(16, 30, 25, 0.05), 0 16px 40px -18px rgba(16, 30, 25, 0.18);
+  --wash: 18 26 23;
+  --glass: rgba(244, 246, 245, 0.86);
+  --glass-strong: rgba(251, 252, 251, 0.95);
+  --scrim: rgba(18, 26, 23, 0.38);
+  --dot: rgba(18, 26, 23, 0.12);
+  --shadow-primary: 0 8px 20px -10px rgba(29, 107, 87, 0.55);
+
+  color-scheme: light;
+}
