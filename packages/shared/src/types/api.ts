@@ -218,3 +218,29 @@ export interface UploadSignResponse {
   uploadUrl: string;
   fields: Record<string, string>;
 }
+
+/** One of your sessions (a timer run), with your own minutes in it. */
+export interface MySession {
+  id: string;
+  roomName: string;
+  /** ISO timestamps. `endedAt` is null while the run is still going. */
+  startedAt: string;
+  endedAt: string | null;
+  focusedMins: number;
+  roundsCompleted: number;
+  /** The room's ticked goals, out of `goalsTotal`, when the session was last saved. */
+  goalsDone: number;
+  goalsTotal: number;
+}
+
+/** GET /api/sessions/mine/latest: what the session summary shows after you leave a room. */
+export interface LatestSessionResponse {
+  /** Your latest session in the room, or null if you have none (since `since`). */
+  session: MySession | null;
+  /** The room hasn't closed, so you can rejoin it. */
+  roomOpen: boolean;
+  /** Your focus this week (Sunday to Saturday in your time zone) against your weekly goal. */
+  week: { focusMins: number; goalMins: number };
+  /** Your current streak if you studied today, otherwise 0. */
+  streakDays: number;
+}

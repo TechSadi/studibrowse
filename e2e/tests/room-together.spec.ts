@@ -104,6 +104,12 @@ test.describe('A shared room', () => {
 
     // ---- The host leaves and the role passes to the next member ----
     await host.page.getByRole('button', { name: 'Leave', exact: true }).click();
+    // The session summary: under a minute of focus, so nothing logged yet, and the room is still open.
+    const summary = host.page.getByRole('dialog', { name: `Nice session, ${host.firstName}` });
+    await expect(summary).toBeVisible();
+    await expect(summary.getByText('focused')).toBeVisible();
+    await expect(summary.getByRole('button', { name: 'Rejoin the room' })).toBeVisible();
+    await summary.getByRole('button', { name: 'Back to home' }).click();
     await expect(host.page).toHaveURL('/home');
 
     for (const guest of [jonah, priya]) {

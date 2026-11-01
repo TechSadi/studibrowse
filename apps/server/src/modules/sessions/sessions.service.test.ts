@@ -67,7 +67,13 @@ describe('savePartialSession', () => {
     await savePartialSession(room.id, run, jordan.id);
 
     const session = (await Session.findById(run.sessionId).lean())!;
-    expect(session).toMatchObject({ roomName: 'Finals week focus', startedAt: START, endedAt: null });
+    expect(session).toMatchObject({
+      roomName: 'Finals week focus',
+      startedAt: START,
+      endedAt: null,
+      goalsDone: 0,
+      goalsTotal: 3,
+    });
     expect(await participantsOf(run.sessionId!)).toEqual([
       { userId: maya.id, focusedMins: 25 },
       { userId: jordan.id, focusedMins: 12 },
@@ -128,6 +134,7 @@ describe('finalizeSession', () => {
       startedAt: START,
       endedAt: minutesIn(115),
       goalsDone: 2,
+      goalsTotal: 3,
       roundsCompleted: 4,
     });
     expect(await participantsOf(run.sessionId!)).toEqual([

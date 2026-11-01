@@ -8,6 +8,7 @@ import type {
   ForgotPasswordResponse,
   GoogleAuthInput,
   InvitePreviewResponse,
+  LatestSessionResponse,
   LoginInput,
   MeResponse,
   PublicRoomsQuery,
@@ -204,6 +205,13 @@ export const roomsApi = {
   signUpload: (roomId: string, input: UploadSignInput) =>
     request<UploadSignResponse>('POST', `/api/rooms/${encodeURIComponent(roomId)}/uploads/sign`, {
       body: input,
+      auth: true,
+    }),
+};
+
+export const sessionsApi = {
+  latestMine: (roomId: string, since?: number) =>
+    request<LatestSessionResponse>('GET', `/api/sessions/mine/latest${queryString({ roomId, since })}`, {
       auth: true,
     }),
 };

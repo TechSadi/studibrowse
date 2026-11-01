@@ -1,0 +1,107 @@
+/* .sum, .sum-stats and .sum-actions in the mockup. The scrim and box come from Modal.module.css. */
+.sum {
+  width: min(480px, 100%);
+  text-align: center;
+  padding: 36px 32px 28px;
+}
+
+.sum h2 {
+  font-size: 24px;
+}
+
+.sum > p {
+  color: var(--muted);
+  margin: 6px 0 22px;
+}
+
+/* .closed-ico, tinted for a good ending. */
+.ico {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ico svg {
+  width: 28px;
+  height: 28px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.stats > div {
+  padding: 14px 8px;
+  border-radius: 14px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+}
+
+.stats b {
+  display: block;
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.stats span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* A .set-row in a bordered box. */
+.weekly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.weekly b {
+  display: block;
+  font-weight: 600;
+  font-size: 14.5px;
+}
+
+.weekly small {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.weekly .percent {
+  color: var(--accent);
+}
+
+.error {
+  color: var(--danger);
+  margin-bottom: 20px;
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 767px) {
+  .sum {
+    padding: 28px 20px 22px;
+  }
+
+  .stats {
+    gap: 8px;
+  }
+}

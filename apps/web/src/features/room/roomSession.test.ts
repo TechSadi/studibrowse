@@ -72,7 +72,30 @@ describe('roomSessionReducer', () => {
     expect(roomSessionReducer(dropped, { type: 'join' })).toBe(dropped);
 
     const back = roomSessionReducer(dropped, { type: 'joined', data: { ...joinData, serverNow: 2000 } });
-    expect(back).toMatchObject({ status: 'joined', joined: { snapshot: { serverNow: 2000 } } });
+    // A reconnect is the same visit.
+    expect(back).toMatchObject({
+      status: 'joined',
+      joined: { snapshot: { serverNow: 2000 }, joinedAt: 1000 },
+    });
+  });
+
+  it('keeps the room for the summary after leaving, and starts a new visit on rejoin', () => {
+    const left = roomSessionReducer(joined, { type: 'left' });
+    expect(left).toMatchObject({ status: 'left', joined: { room, joinedAt: 1000 } });
+    expect(isEnded(left)).toBe(true);
+    // Nothing from the room changes what you left.
+    expect(roomSessionReducer(left, { type: 'presence', members: [] })).toBe(left);
+
+    const joining = roomSessionReducer(left, { type: 'rejoin' });
+    expect(joining).toEqual({ status: 'joining' });
+    const again = roomSessionReducer(joining, { type: 'joined', data: { ...joinData, serverNow: 5000 } });
+    expect(again).toMatchObject({ joined: { joinedAt: 5000 } });
+  });
+
+  it('only leaves from inside the room', () => {
+    const removed = roomSessionReducer(joined, { type: 'removed' });
+    expect(roomSessionReducer(removed, { type: 'left' })).toBe(removed);
+    expect(roomSessionReducer(joined, { type: 'rejoin' })).toBe(joined);
   });
 
   it('shows Room full if the seat was lost while away', () => {

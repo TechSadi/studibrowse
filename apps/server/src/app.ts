@@ -11,6 +11,7 @@ import { createAuthRouter } from './modules/auth/auth.routes';
 import { createGoogleVerifier, type GoogleVerifier } from './modules/auth/google';
 import { createHealthRouter } from './modules/health/health.routes';
 import { createRoomsRouter } from './modules/rooms/rooms.routes';
+import { createSessionsRouter } from './modules/sessions/sessions.routes';
 import { createUsersRouter } from './modules/users/users.routes';
 
 /** The API only takes small JSON bodies. Files go straight from the browser to storage, never through here. */
@@ -49,6 +50,7 @@ export function createApp({
   app.use('/api/auth', createAuthRouter({ emailService, verifyGoogleToken }));
   app.use('/api/users', createUsersRouter());
   app.use('/api/rooms', createRoomsRouter({ storage }));
+  app.use('/api/sessions', createSessionsRouter());
 
   app.use(notFoundHandler);
   app.use(errorHandler);

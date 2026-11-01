@@ -1,11 +1,14 @@
-import type { SessionSummary } from '@studibrowse/shared';
+import type { LatestSessionResponse, MySession, SessionSummary } from '@studibrowse/shared';
 import { createKeyedLock } from '../../lib/keyedLock';
+import { unauthenticated } from '../auth/auth.errors';
 import { Room } from '../rooms/room.model';
+import { roomNotFound } from '../rooms/rooms.errors';
 import { withSessionId, type RunFocus, type TimerRun } from '../rooms/roomTimer.service';
 import { User } from '../users/user.model';
 import { toParticipants, totalFocusMins } from './focusAccounting';
-import { Session } from './session.model';
+import { Session, type SessionRecord } from './session.model';
 import { nextStreak } from './streak';
+import { isThisWeek, studiedToday } from './week';
 
 /** What session:logged tells the room. */
 export interface LoggedSession {
@@ -35,6 +38,7 @@ async function writeSession(roomId: string, room: SessionRoom, run: TimerRun, en
     startedAt: run.startedAt ?? run.focus[0]?.firstFocusAt ?? endedAt ?? new Date(),
     participants,
     goalsDone: room.goals.filter((goal) => goal.done).length,
+    goalsTotal: room.goals.length,
     roundsCompleted: run.roundsCompleted,
   };
   await Session.updateOne(
@@ -92,6 +96,70 @@ export async function finalizeSession(
     },
     totalSessions: totals?.totalSessions ?? 0,
     totalFocusMins: totals?.totalFocusMins ?? 0,
+  };
+}
+
+// A week back from now, plus a day for time zones: everything that can fall in this Sunday-to-Saturday week.
+const WEEK_LOOKBACK_MS = 8 * 86_400_000;
+
+function myMinutes(session: Pick<SessionRecord, 'participants'>, userId: string): number {
+  return session.participants.find((p) => p.userId.toString() === userId)?.focusedMins ?? 0;
+}
+
+function toMySession(session: SessionRecord, userId: string): MySession {
+  return {
+    id: session._id.toString(),
+    roomName: session.roomName,
+    startedAt: session.startedAt.toISOString(),
+    endedAt: session.endedAt ? session.endedAt.toISOString() : null,
+    focusedMins: myMinutes(session, userId),
+    roundsCompleted: session.roundsCompleted,
+    goalsDone: session.goalsDone,
+    goalsTotal: session.goalsTotal,
+  };
+}
+
+/**
+ * The session summary after leaving a room: your latest session there (last saved at or after `since`, if
+ * given), whether the room is still open, this week's focus against your goal, and your streak if it's alive
+ * today. Any room id: the answer only holds your own sessions and whether the room is open.
+ */
+export async function getLatestSession(
+  userId: string,
+  roomId: string,
+  since: Date | undefined,
+  now = new Date(),
+): Promise<LatestSessionResponse> {
+  const [room, user] = await Promise.all([
+    Room.findById(roomId, { closedAt: 1 }).lean(),
+    User.findById(userId, { weeklyGoalMins: 1, timeZone: 1, streak: 1, lastStudiedAt: 1 }).lean(),
+  ]);
+  if (!room) throw roomNotFound();
+  if (!user) throw unauthenticated();
+
+  const [latest, recent] = await Promise.all([
+    Session.findOne({
+      roomId,
+      'participants.userId': userId,
+      ...(since ? { updatedAt: { $gte: since } } : {}),
+    })
+      .sort({ startedAt: -1 })
+      .lean<SessionRecord>(),
+    Session.find(
+      { 'participants.userId': userId, startedAt: { $gte: new Date(now.getTime() - WEEK_LOOKBACK_MS) } },
+      { startedAt: 1, participants: 1 },
+    ).lean<Pick<SessionRecord, 'startedAt' | 'participants'>[]>(),
+  ]);
+
+  const weekMins = recent
+    .filter((session) => isThisWeek(session.startedAt, now, user.timeZone))
+    .reduce((sum, session) => sum + myMinutes(session, userId), 0);
+
+  return {
+    session: latest ? toMySession(latest, userId) : null,
+    roomOpen: room.closedAt === null,
+    week: { focusMins: weekMins, goalMins: user.weeklyGoalMins },
+    streakDays: studiedToday(user.lastStudiedAt ?? null, now, user.timeZone) ? user.streak.current : 0,
   };
 }
 
