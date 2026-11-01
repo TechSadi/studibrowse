@@ -15,7 +15,8 @@ export const INVITE_CODE_PATTERN = /^[A-Za-z0-9_-]{10}$/;
 /** Rooms worth joining loads 3 rows of 3 at a time. */
 export const PUBLIC_ROOMS_PAGE_SIZE = 9;
 
-export const TIMER_PHASES = ['focus', 'shortBreak', 'longBreak'] as const;
+/** `idle`: not started yet. `done`: every round finished. See docs/ARCHITECTURE.md › Timer. */
+export const TIMER_PHASES = ['idle', 'focus', 'shortBreak', 'longBreak', 'done'] as const;
 export type TimerPhase = (typeof TIMER_PHASES)[number];
 
 /** The Home room filters, in mockup order. */

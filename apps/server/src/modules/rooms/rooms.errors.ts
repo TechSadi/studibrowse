@@ -10,3 +10,5 @@ export const roomFull = () =>
   new AppError(409, 'ROOM_FULL', 'This room is full. Try another room or open your own.');
 
 export const notAMember = () => new AppError(403, 'NOT_A_MEMBER', 'Join the room first.');
+
+export const invalidTimerCommand = (message: string) => new AppError(409, 'INVALID_TIMER_COMMAND', message);

@@ -105,8 +105,8 @@ export interface TimerSettings extends TimerDefaults {
 }
 
 /**
- * The server-owned timer. Running: `endsAt` is set and `pausedRemaining` is null. Paused (or not started yet):
- * `endsAt` is null and `pausedRemaining` holds the milliseconds left.
+ * The server-owned timer. Running: `endsAt` is set and `pausedRemaining` is null. Paused (or waiting for the host
+ * between phases): `endsAt` is null and `pausedRemaining` holds the milliseconds left. `idle` and `done`: both null.
  */
 export interface RoomTimer {
   phase: TimerPhase;

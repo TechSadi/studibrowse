@@ -148,7 +148,7 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 | `GET /api/rooms/:id` | signed in | One room. |
 | `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview: name, subject, host, member count, size, timer and goal texts. No ids or codes. 404 `ROOM_NOT_FOUND`, 410 `ROOM_CLOSED`. |
 
-- **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts paused at a full first focus round: `{ phase: 'focus', round: 1, endsAt: null, pausedRemaining: focusMins }`.
+- **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts idle: `{ phase: 'idle', round: 1, endsAt: null, pausedRemaining: null }`.
 - **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission.
 - **Order:** rooms hosted by people you follow first, then newest (`$addFields hostFollowed` in an aggregation, with the host joined by `$lookup`). Rooms whose host account is gone are left out.
 - **Phase filters** count only running timers: a paused or not-yet-started room is neither "In a focus round" nor "On a break".
@@ -158,13 +158,21 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 
 ## Timer: the server owns it
 
-A room stores `timer { phase, round, endsAt, pausedRemaining }`. `phase` is `focus`, `shortBreak` or `longBreak`.
+A room stores `timer { phase, round, endsAt, pausedRemaining }`. `phase` is `idle` (not started), `focus`, `shortBreak`, `longBreak` or `done` (every round finished).
 
 - **Running:** `endsAt` is a timestamp, and `pausedRemaining` is null. Each client shows `endsAt - now` and redraws locally, so the timer never drifts and a late joiner sees the right time at once.
 - **Paused:** `endsAt` is null, and `pausedRemaining` holds the milliseconds left. Resuming sets `endsAt = now + pausedRemaining`.
+- **Idle and done:** both are null. `idle` is round 1; `done` keeps `round = totalRounds`.
+- **Rules** (`realtime/timer.ts`, each a pure `(state, settings, now) → state`):
+  - `start` works from `idle` or `done` ("Start again") and runs focus round 1.
+  - `pause` works only while running, and `resume` only while paused.
+  - `reset` goes back to `idle` from anywhere.
+  - `skip` ends the current focus or break now. A running timer moves on as if the phase had ended. A paused one stays paused, at the full length of the next phase.
+  - Invalid commands throw `409 INVALID_TIMER_COMMAND`.
+- **Phase order:** after focus round `r`, the timer is `done` if `r` is the last round (no break after it). Otherwise it goes to a `longBreak` if `r % roundsBeforeLong === 0`, else a `shortBreak`, with the round unchanged. After a break comes focus round `r + 1`. With `autoStart` off, the next phase waits paused at full length for the host.
 - **Commands:** only the host can send `timer:start`, `timer:pause`, `timer:skip` or `timer:reset`. The server checks this on every call, updates the room and broadcasts `timer:state`.
-- **Phase changes:** the server schedules a timeout for `endsAt`. When it fires, the server works out the next phase and round from `timerSettings`, logs the session after the last round, and either starts the next phase (if `autoStart` is on) or waits for the host. After a restart, the server reschedules from the stored `endsAt`.
-- The phase and round maths live in pure functions (`realtime/timer.ts`) with unit tests.
+- **Phase changes:** the server schedules a timeout for `endsAt`. When it fires, `advance` works out the next phase and round from `timerSettings`. The server logs the session after the last round, and the next phase either starts at once (if `autoStart` is on) or waits for the host. `advance` times the next phase from the previous `endsAt`, not from now, so a late timeout doesn't drift. If nothing is due it returns the state unchanged. After a restart it catches up through every phase that ended while the server was down.
+- The phase and round maths live in pure functions (`realtime/timer.ts`) with unit tests (`timer.test.ts`, fake clock).
 
 ## Room lifecycle
 

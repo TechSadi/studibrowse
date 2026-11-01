@@ -58,7 +58,7 @@ export function makeRoom(host: PublicUser, overrides: Partial<RoomDetail> = {}):
     isPublic: true,
     maxSize: 20,
     memberCount: 0,
-    timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+    timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
     timerSettings: { ...host.timerDefaults, autoStart: true },
     goals: [],
     inviteCode: 'aB3xK9_q-2',

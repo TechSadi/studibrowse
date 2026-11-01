@@ -72,7 +72,7 @@ describe('POST /api/rooms', () => {
       host: { id: user.id, name: user.name, username: user.username },
       goals: [{ text: 'Finish chapter 4', done: false, addedBy: user.id }],
       timerSettings,
-      timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+      timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
       totalSessions: 0,
       totalFocusMins: 0,
     });
@@ -391,7 +391,7 @@ describe('GET /api/rooms/invite/:code', () => {
       host: { id: user.id, name: 'Maya Kapoor', username: user.username, avatarColor: user.avatarColor },
       memberCount: 0,
       maxSize: 10,
-      timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+      timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
       timerSettings,
       goals: [{ text: 'Finish chapter 4', done: false }],
     });

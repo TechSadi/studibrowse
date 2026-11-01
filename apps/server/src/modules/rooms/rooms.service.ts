@@ -11,6 +11,7 @@ import {
   type RoomJoinData,
 } from '@studibrowse/shared';
 import { countMembers, fullRoomIds, isMember, type MemberProfile } from '../../realtime/presence';
+import { idleTimer } from '../../realtime/timer';
 import { unauthenticated } from '../auth/auth.errors';
 import { toChatMessage, type MessageRecord } from '../chat/chat.serializer';
 import { Message } from '../chat/message.model';
@@ -46,13 +47,8 @@ export async function createRoom(userId: string, data: CreateRoomData): Promise<
         hostId: userId,
         inviteCode: generateInviteCode(),
         goals: goals.map((text) => ({ text, done: false, addedBy: userId })),
-        // Ready to start: paused at a full first focus round until the host presses Start.
-        timer: {
-          phase: 'focus',
-          round: 1,
-          endsAt: null,
-          pausedRemaining: data.timerSettings.focusMins * 60_000,
-        },
+        // Waits for the host to press Start.
+        timer: idleTimer(),
         // Nobody is connected until the host's socket joins the room.
         emptySince: new Date(),
       });

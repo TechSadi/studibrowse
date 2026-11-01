@@ -27,7 +27,7 @@ function makeRoom(overrides: Partial<RoomSummary> = {}): RoomSummary {
     isPublic: true,
     maxSize: 20,
     memberCount: 14,
-    timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+    timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
     timerSettings,
     hostFollowed: false,
     ...overrides,

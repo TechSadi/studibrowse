@@ -109,17 +109,18 @@ describe('room:join', () => {
       name: 'Finals week focus',
       isHost: false,
       memberCount: 2,
-      timer: { phase: 'focus', round: 1, endsAt: null, pausedRemaining: 25 * 60_000 },
+      timer: { phase: 'idle', round: 1, endsAt: null, pausedRemaining: null },
       goals: [expect.objectContaining({ text: 'Finish chapter 4', done: false })],
     });
+    // The timer hasn't started, so nobody is Focusing yet.
     expect(data.members).toEqual([
       expect.objectContaining({
         userId: host.user.id,
         isHost: true,
-        status: 'focusing',
+        status: 'break',
         workingOn: 'Chapter 4',
       }),
-      expect.objectContaining({ userId: guest.user.id, isHost: false, status: 'focusing', workingOn: '' }),
+      expect.objectContaining({ userId: guest.user.id, isHost: false, status: 'break', workingOn: '' }),
     ]);
     expect(data.resources).toEqual([
       expect.objectContaining({ id: resource.id, title: 'Notes', size: null }),

@@ -58,7 +58,7 @@ describe('phaseView', () => {
   });
 
   it('shows a new room as waiting to start', () => {
-    expect(phaseView(timer({}), settings, now)).toEqual({
+    expect(phaseView(timer({ phase: 'idle', pausedRemaining: null }), settings, now)).toEqual({
       title: 'Waiting to start',
       detail: '4 × 25 min focus rounds',
       remaining: 1,
@@ -89,6 +89,32 @@ describe('phaseView', () => {
     expect(phaseView(timer({ round: 3, pausedRemaining: 12 * 60_000 }), settings, now)).toMatchObject({
       title: 'Paused · round 3 of 4',
       detail: '12 min left',
+      tone: 'idle',
+    });
+  });
+
+  it('shows a paused focus round 1 as paused, not as waiting to start', () => {
+    expect(phaseView(timer({}), settings, now)).toMatchObject({
+      title: 'Paused · round 1 of 4',
+      detail: '25 min left',
+    });
+  });
+
+  it('shows a waiting break (autoStart off) as paused', () => {
+    expect(
+      phaseView(timer({ phase: 'longBreak', round: 4, pausedRemaining: 15 * 60_000 }), settings, now),
+    ).toMatchObject({
+      title: 'Paused · break 4 of 4',
+      detail: '15 min left',
+      remaining: 1,
+    });
+  });
+
+  it('shows a finished run as complete', () => {
+    expect(phaseView(timer({ phase: 'done', round: 4, pausedRemaining: null }), settings, now)).toEqual({
+      title: 'Session complete',
+      detail: '4 rounds finished',
+      remaining: 1,
       tone: 'idle',
     });
   });
