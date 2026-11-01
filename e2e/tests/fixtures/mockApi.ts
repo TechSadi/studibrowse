@@ -277,6 +277,9 @@ export async function mockApi(page: Page): Promise<MockApi> {
   const api = new MockApi();
   // Keep tests offline: without Google's script the Google button falls back to its "unavailable" state.
   await page.route('https://accounts.google.com/**', (route) => route.abort());
+  // The real server runs for the room tests, and it would reject the mock's fake tokens and end the session.
+  // Keep sockets offline instead: the client just keeps trying to reconnect. (Polling comes before the upgrade.)
+  await page.route('**/socket.io/**', (route) => route.abort());
   await page.route('**/api/**', async (route: Route) => {
     const request = route.request();
     const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};

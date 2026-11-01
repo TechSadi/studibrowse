@@ -8,7 +8,8 @@
     "build": "tsup",
     "start": "node --env-file-if-exists=../../.env dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e:server": "tsx src/test/e2eServer.ts"
   },
   "dependencies": {
     "@studibrowse/shared": "workspace:*",
