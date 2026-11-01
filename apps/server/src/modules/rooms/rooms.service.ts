@@ -1,14 +1,21 @@
 import { mongo, Types, type PipelineStage } from 'mongoose';
 import {
   PUBLIC_ROOMS_PAGE_SIZE,
+  RECENT_MESSAGES_LIMIT,
+  type AvatarColor,
   type CreateRoomData,
   type InvitePreview,
   type PublicRoomsQuery,
   type PublicRoomsResponse,
   type RoomDetail,
+  type RoomJoinData,
 } from '@studibrowse/shared';
-import { countMembers, fullRoomIds } from '../../realtime/presence';
+import { countMembers, fullRoomIds, isMember, type MemberProfile } from '../../realtime/presence';
 import { unauthenticated } from '../auth/auth.errors';
+import { toChatMessage, type MessageRecord } from '../chat/chat.serializer';
+import { Message } from '../chat/message.model';
+import { Resource } from '../resources/resource.model';
+import { toRoomResource, type ResourceRecord } from '../resources/resources.serializer';
 import { User } from '../users/user.model';
 import { generateInviteCode } from './inviteCode';
 import { Room } from './room.model';
@@ -126,11 +133,11 @@ export async function listPublicRooms(userId: string, query: PublicRoomsQuery): 
   return { rooms, nextPage: rows.length > PUBLIC_ROOMS_PAGE_SIZE ? query.page + 1 : null };
 }
 
-/** A private room is visible only to its host for now; members will see it too once they can join. */
+/** A private room is visible to its host and to the people in it. */
 export async function getRoom(userId: string, roomId: string): Promise<RoomDetail> {
   const room = await Room.findById(roomId).lean<RoomRecord>();
   if (!room || room.closedAt) throw roomNotFound();
-  if (!room.isPublic && room.hostId.toString() !== userId) throw roomNotFound();
+  if (!room.isPublic && room.hostId.toString() !== userId && !isMember(roomId, userId)) throw roomNotFound();
   const host = await findHost(room);
   return toRoomDetail(room, host, { memberCount: countMembers(roomId), viewerId: userId });
 }
@@ -149,4 +156,72 @@ async function findHost(room: RoomRecord): Promise<HostRecord> {
   // A room that outlived its host's account is treated as gone.
   if (!host) throw roomNotFound();
   return host;
+}
+
+export interface JoinableRoom {
+  room: RoomRecord;
+  host: HostRecord;
+}
+
+/**
+ * The room `userId` asked to join, if they may. A private room needs its invite code unless you're its host
+ * or already in it (another tab, or back inside the reconnect window). A wrong code gets the same answer as
+ * a missing room, so neither ids nor codes can be probed.
+ */
+export async function loadJoinableRoom(
+  userId: string,
+  roomId: string,
+  inviteCode?: string,
+): Promise<JoinableRoom> {
+  const room = await Room.findById(roomId).lean<RoomRecord>();
+  if (!room) throw roomNotFound();
+  if (room.closedAt) throw roomClosed();
+  const allowed =
+    room.isPublic ||
+    room.hostId.toString() === userId ||
+    isMember(roomId, userId) ||
+    inviteCode === room.inviteCode;
+  if (!allowed) throw roomNotFound();
+  return { room, host: await findHost(room) };
+}
+
+/** How someone appears in a room's People list. */
+export async function loadMemberProfile(userId: string): Promise<MemberProfile> {
+  const user = await User.findById(userId, HOST_FIELDS).lean<HostRecord>();
+  if (!user) throw unauthenticated();
+  return { name: user.name, username: user.username, avatarColor: user.avatarColor as AvatarColor };
+}
+
+/** Everything room:join answers with except the members, which come from presence. */
+export async function getRoomSnapshot(
+  { room, host }: JoinableRoom,
+  viewerId: string,
+): Promise<Omit<RoomJoinData, 'members'>> {
+  const [resources, latest] = await Promise.all([
+    Resource.find({ roomId: room._id }).sort({ createdAt: 1, _id: 1 }).lean<ResourceRecord[]>(),
+    Message.find({ roomId: room._id })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_MESSAGES_LIMIT)
+      .lean<MessageRecord[]>(),
+  ]);
+  const roomId = room._id.toString();
+  return {
+    room: toRoomDetail(room, host, { memberCount: countMembers(roomId), viewerId }),
+    resources: resources.map(toRoomResource),
+    messages: latest.reverse().map(toChatMessage),
+  };
+}
+
+/** Someone is connected again, so the grace period is off. */
+export async function markRoomOccupied(roomId: string): Promise<void> {
+  await Room.updateOne({ _id: roomId }, { emptySince: null });
+}
+
+/** Nobody is connected: the cleanup job closes the room once the grace period passes. */
+export async function markRoomEmpty(roomId: string, now: Date): Promise<void> {
+  await Room.updateOne({ _id: roomId, closedAt: null }, { emptySince: now });
+}
+
+export async function setRoomHost(roomId: string, hostId: string): Promise<void> {
+  await Room.updateOne({ _id: roomId }, { hostId });
 }

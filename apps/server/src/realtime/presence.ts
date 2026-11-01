@@ -1,42 +1,190 @@
-/**
- * Who is connected to each room, in memory (one server process in v1).
- *
- * Phase 1 has no sockets yet, so nothing calls addMember and every room reports 0 members. Phase 2's
- * room:join / room:leave handlers fill it in; the room list and "Has space" filter already read from here.
- */
-const membersByRoom = new Map<string, Set<string>>();
-const maxSizeByRoom = new Map<string, number>();
+import type { AvatarColor, MemberStatus, PresenceMember } from '@studibrowse/shared';
 
-export function addMember(roomId: string, userId: string, maxSize: number): void {
-  const members = membersByRoom.get(roomId) ?? new Set<string>();
-  members.add(userId);
-  membersByRoom.set(roomId, members);
-  maxSizeByRoom.set(roomId, maxSize);
+/**
+ * Who is in each room, in memory (one server process in v1). Keyed by room, then user; each user can have
+ * several sockets (tabs). Someone whose last socket dropped stays here, holding their seat, until the room
+ * handlers remove them after the reconnect window. This store has no timers and no database.
+ */
+
+export interface MemberProfile {
+  name: string;
+  username: string;
+  avatarColor: AvatarColor;
 }
 
-export function removeMember(roomId: string, userId: string): void {
-  const members = membersByRoom.get(roomId);
-  if (!members) return;
-  members.delete(userId);
-  if (members.size === 0) {
-    membersByRoom.delete(roomId);
-    maxSizeByRoom.delete(roomId);
+interface Member {
+  profile: MemberProfile;
+  sockets: Set<string>;
+  joinedAt: Date;
+  status: MemberStatus;
+  workingOn: string;
+  focusingSince: Date | null;
+}
+
+interface RoomPresence {
+  maxSize: number;
+  hostId: string;
+  members: Map<string, Member>;
+}
+
+const rooms = new Map<string, RoomPresence>();
+const roomsBySocket = new Map<string, Set<string>>();
+
+export interface NewSocket {
+  userId: string;
+  profile: MemberProfile;
+  /** The status a newcomer starts with. Someone already here keeps theirs. */
+  status: MemberStatus;
+  maxSize: number;
+  hostId: string;
+  now: Date;
+}
+
+/**
+ * Adds a socket to a room. 'full' when the room already holds `maxSize` people and this user isn't one of
+ * them; seats are counted by person, so another tab of someone already here always gets in.
+ */
+export function addSocket(
+  roomId: string,
+  socketId: string,
+  { userId, profile, status, maxSize, hostId, now }: NewSocket,
+): 'joined' | 'rejoined' | 'full' {
+  const room = rooms.get(roomId) ?? { maxSize, hostId, members: new Map<string, Member>() };
+  room.maxSize = maxSize;
+  const existing = room.members.get(userId);
+  if (!existing && room.members.size >= maxSize) return 'full';
+
+  if (existing) {
+    existing.profile = profile;
+    existing.sockets.add(socketId);
+  } else {
+    // An empty room takes the host from the database; while people are here, the store's host wins.
+    if (room.members.size === 0) room.hostId = hostId;
+    room.members.set(userId, {
+      profile,
+      sockets: new Set([socketId]),
+      joinedAt: now,
+      status,
+      workingOn: '',
+      focusingSince: status === 'focusing' ? now : null,
+    });
+  }
+  rooms.set(roomId, room);
+  const socketRooms = roomsBySocket.get(socketId) ?? new Set<string>();
+  socketRooms.add(roomId);
+  roomsBySocket.set(socketId, socketRooms);
+  return existing ? 'rejoined' : 'joined';
+}
+
+/** Takes one socket out of a room. Returns how many sockets that user still has there. */
+export function removeSocket(roomId: string, userId: string, socketId: string): number {
+  const socketRooms = roomsBySocket.get(socketId);
+  socketRooms?.delete(roomId);
+  if (socketRooms?.size === 0) roomsBySocket.delete(socketId);
+
+  const member = rooms.get(roomId)?.members.get(userId);
+  if (!member) return 0;
+  member.sockets.delete(socketId);
+  return member.sockets.size;
+}
+
+/** Removes someone from a room for good. False if they weren't there. */
+export function removeMember(roomId: string, userId: string): boolean {
+  const room = rooms.get(roomId);
+  const member = room?.members.get(userId);
+  if (!room || !member) return false;
+  for (const socketId of member.sockets) removeSocket(roomId, userId, socketId);
+  room.members.delete(userId);
+  if (room.members.size === 0) rooms.delete(roomId);
+  return true;
+}
+
+export function isMember(roomId: string, userId: string): boolean {
+  return rooms.get(roomId)?.members.has(userId) ?? false;
+}
+
+export function isSocketInRoom(roomId: string, socketId: string): boolean {
+  return roomsBySocket.get(socketId)?.has(roomId) ?? false;
+}
+
+export function roomsOfSocket(socketId: string): string[] {
+  return [...(roomsBySocket.get(socketId) ?? [])];
+}
+
+/** Whether anyone has a socket in the room right now (people inside the reconnect window don't). */
+export function hasConnectedSockets(roomId: string): boolean {
+  const members = rooms.get(roomId)?.members.values() ?? [];
+  return [...members].some((member) => member.sockets.size > 0);
+}
+
+export interface StatusChange {
+  status?: MemberStatus;
+  workingOn?: string;
+}
+
+export function setStatus(
+  roomId: string,
+  userId: string,
+  { status, workingOn }: StatusChange,
+  now: Date,
+): void {
+  const member = rooms.get(roomId)?.members.get(userId);
+  if (!member) return;
+  if (workingOn !== undefined) member.workingOn = workingOn;
+  if (status !== undefined && status !== member.status) {
+    member.status = status;
+    member.focusingSince = status === 'focusing' ? now : null;
   }
 }
 
+export function getHostId(roomId: string): string | null {
+  return rooms.get(roomId)?.hostId ?? null;
+}
+
+export function setHost(roomId: string, userId: string): void {
+  const room = rooms.get(roomId);
+  if (room) room.hostId = userId;
+}
+
+/** Who has been in the room longest, for handing over the host role. */
+export function longestPresentMember(roomId: string): string | null {
+  const [first] = sortedMembers(roomId);
+  return first?.[0] ?? null;
+}
+
+function sortedMembers(roomId: string): [string, Member][] {
+  const members = [...(rooms.get(roomId)?.members ?? [])];
+  return members.sort(([, a], [, b]) => a.joinedAt.getTime() - b.joinedAt.getTime());
+}
+
+/** The People list, longest present first. */
+export function listMembers(roomId: string): PresenceMember[] {
+  const hostId = getHostId(roomId);
+  return sortedMembers(roomId).map(([userId, member]) => ({
+    userId,
+    name: member.profile.name,
+    username: member.profile.username,
+    avatarColor: member.profile.avatarColor,
+    status: member.status,
+    workingOn: member.workingOn,
+    isHost: userId === hostId,
+    joinedAt: member.joinedAt.toISOString(),
+    focusingSince: member.focusingSince?.toISOString() ?? null,
+  }));
+}
+
+/** People in the room, each counted once however many tabs they have open. */
 export function countMembers(roomId: string): number {
-  return membersByRoom.get(roomId)?.size ?? 0;
+  return rooms.get(roomId)?.members.size ?? 0;
 }
 
 /** Rooms with no space left, so the "Has space" filter can leave them out in the database query. */
 export function fullRoomIds(): string[] {
-  return [...membersByRoom].flatMap(([roomId, members]) =>
-    members.size >= (maxSizeByRoom.get(roomId) ?? Infinity) ? [roomId] : [],
-  );
+  return [...rooms].flatMap(([roomId, room]) => (room.members.size >= room.maxSize ? [roomId] : []));
 }
 
 /** For tests. */
 export function resetPresence(): void {
-  membersByRoom.clear();
-  maxSizeByRoom.clear();
+  rooms.clear();
+  roomsBySocket.clear();
 }

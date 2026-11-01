@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import {
   CHAT_TEXT_MAX,
+  INVITE_CODE_PATTERN,
   MAX_FILE_MB,
   MEMBER_STATUSES,
   RESOURCE_TITLE_MAX,
@@ -48,7 +49,11 @@ const goalId = objectIdSchema('That goal id is not valid.');
 
 const roomOnlySchema = z.strictObject({ roomId });
 
-export const roomJoinSchema = roomOnlySchema;
+/** A private room also needs its invite code, unless you're its host or already in it. */
+export const roomJoinSchema = z.strictObject({
+  roomId,
+  inviteCode: z.string().regex(INVITE_CODE_PATTERN, 'That invite code is not valid.').optional(),
+});
 export const roomLeaveSchema = roomOnlySchema;
 
 export const statusSetSchema = z

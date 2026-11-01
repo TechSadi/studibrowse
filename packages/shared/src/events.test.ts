@@ -58,6 +58,14 @@ describe('room id payloads', () => {
     expect(roomJoinSchema.safeParse({ roomId, hostId: userId }).success).toBe(false);
   });
 
+  it('takes an optional invite code on room:join', () => {
+    expect(roomJoinSchema.parse({ roomId, inviteCode: 'abcDEF12_-' })).toEqual({
+      roomId,
+      inviteCode: 'abcDEF12_-',
+    });
+    expect(roomJoinSchema.safeParse({ roomId, inviteCode: 'short' }).success).toBe(false);
+  });
+
   it('checks user ids too', () => {
     expect(hostTransferSchema.safeParse({ roomId, userId }).success).toBe(true);
     expect(hostTransferSchema.safeParse({ roomId, userId: '123' }).success).toBe(false);

@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { INVITE_CODE_PATTERN, type CreateRoomInput, type RoomSummary } from '@studibrowse/shared';
 import { createApp } from '../../app';
-import { addMember, resetPresence } from '../../realtime/presence';
+import { addSocket, resetPresence } from '../../realtime/presence';
 import { createUserWithToken } from '../../test/authHelpers';
 import { useTestDatabase } from '../../test/testDb';
 import { User } from '../users/user.model';
@@ -296,8 +296,16 @@ describe('GET /api/rooms/public', () => {
     const { token } = await createUserWithToken();
     const full = await createRoomOk(token, { name: 'Full', maxSize: 2 });
     await createRoomOk(token, { name: 'Roomy', maxSize: 2 });
-    addMember(full.id, 'a', 2);
-    addMember(full.id, 'b', 2);
+    for (const userId of ['a', 'b']) {
+      addSocket(full.id, `socket-${userId}`, {
+        userId,
+        profile: { name: userId, username: userId, avatarColor: 'green' },
+        status: 'focusing',
+        maxSize: 2,
+        hostId: 'a',
+        now: new Date(),
+      });
+    }
 
     const all = (await listPublic(token)).body.rooms as RoomSummary[];
     expect(all.find((room) => room.name === 'Full')?.memberCount).toBe(2);

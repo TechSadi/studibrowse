@@ -25,6 +25,12 @@ export type RoomFilter = (typeof ROOM_FILTERS)[number];
 /** How long an empty room stays open, so a refresh or dropped connection doesn't end it. */
 export const ROOM_GRACE_MS = 5 * 60 * 1000;
 
+/** How long someone whose last tab dropped keeps their place in a room before they count as gone. */
+export const RECONNECT_GRACE_MS = 30 * 1000;
+
+/** How much chat history room:join sends. */
+export const RECENT_MESSAGES_LIMIT = 50;
+
 export const MAX_GOALS = 10;
 
 export const MAX_FILE_MB = 10;

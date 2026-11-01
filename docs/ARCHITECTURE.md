@@ -153,7 +153,7 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 - **Order:** rooms hosted by people you follow first, then newest (`$addFields hostFollowed` in an aggregation, with the host joined by `$lookup`). Rooms whose host account is gone are left out.
 - **Phase filters** count only running timers: a paused or not-yet-started room is neither "In a focus round" nor "On a break".
 - **Invite codes:** `nanoid(10)` (URL-safe alphabet, cryptographic randomness, 64^10 codes), unique index, retried on the rare collision. `INVITE_CODE_PATTERN` in shared is the one definition of a valid code; the Home join box uses it too.
-- **Member counts** come from the in-memory presence store (`realtime/presence.ts`). Until sockets join rooms, every room reports 0. "Has space" leaves out `fullRoomIds()` in the database query, so paging stays correct.
+- **Member counts** come from the in-memory presence store (`realtime/presence.ts`), one per person however many tabs they have open. "Has space" leaves out `fullRoomIds()` in the database query, so paging stays correct. A private room is also visible (`GET /:id`) to the people currently in it.
 - **Web:** `roomsApi` in `lib/api.ts`. `features/rooms/CreateRoomDialog.tsx` (rendered by Home while `?create=1` is set, starting from your timer defaults) creates the room, seeds the `['rooms', id]` query and opens `/room/:id`. That route is a placeholder (`RoomPlaceholderPage`) that shows the invite link with a copy button until the focus room arrives. `features/home/LiveRooms.tsx` loads pages with `useInfiniteQuery` keyed by filter, `q` and `?subject=` (a card's subject tag sets it). `features/rooms/timerText.ts` works out a card's "N min left" from `endsAt`, and the cards redraw every 30 seconds. `components/ui/Modal.tsx` is the shared dialog: Escape and backdrop close it, Tab stays inside, and focus returns to the opener.
 
 ## Timer: the server owns it
@@ -169,14 +169,18 @@ A room stores `timer { phase, round, endsAt, pausedRemaining }`. `phase` is `foc
 ## Room lifecycle
 
 ```
-open ──last member leaves──▶ empty (emptySince = now) ──5 min, nobody back──▶ closed (deleted)
+open ──last socket leaves──▶ empty (emptySince = now) ──5 min, nobody back──▶ closed (closedAt = now)
   ▲                               │
   └────────someone joins──────────┘  (emptySince = null)
 ```
 
-- **Open:** at least one member is connected. At most `MAX_ROOM_SIZE` (20) members. If the host leaves, the host role passes to the member who has been there longest.
-- **Empty:** the last socket left or disconnected. `emptySince` is set, but the room and its timer stay as they are, so a refresh or dropped connection doesn't end it.
+- **Presence** (`realtime/presence.ts`) is in memory, keyed by room and then user, with every socket (tab) each user has there. It holds each member's profile, `joinedAt`, status, "working on" note and `focusingSince`, plus the room's `maxSize` and current host. It has no timers and no database; the room handlers (`realtime/handlers/room.handlers.ts`) drive it and broadcast `presence:update` on every change.
+- **Joining:** `room:join` checks the room exists and isn't closed, that you may join (public; private with the invite code; or you're the host or already in it), and that it has space. Seats are counted by person: a second tab of someone already in never counts. The check and the add run with no `await` between them, so two people can't take the last seat together. A newcomer's status follows the timer phase (focus → Focusing, breaks → Break).
+- **Leaving vs disconnecting:** `room:leave` removes you at once (once all your tabs in that room have left). A disconnect is not a leave: when your last socket drops you keep your place, your `joinedAt` and your status for `RECONNECT_GRACE_MS` (30 seconds), and only then are you removed and the room told. A rejoin inside that window cancels the removal.
+- **Host handover:** when the host leaves for good (leave, or their reconnect window runs out), the member who has been there longest becomes host, in presence and in the database (`hostId`), and `presence:update` carries the new `isHost`.
+- **Open:** at least one member is in the room. At most `maxSize` (2 to 20) people.
+- **Empty:** the last socket left or disconnected. `emptySince` is set straight away, but the room and its timer stay as they are, so a refresh or dropped connection doesn't end it.
 - **Grace:** `ROOM_GRACE_MS` (5 minutes). Anyone who joins in that time clears `emptySince` and the room carries on.
-- **Closed:** `jobs/roomCleanup.ts` runs every minute and deletes rooms whose `emptySince` is older than the grace period, together with their messages and resources (and stored files). Sessions stay in each person's history. The host can also close a room straight away. Invite links to a closed room show the Room closed page.
+- **Closed:** `jobs/roomCleanup.ts` runs every 30 seconds and closes rooms whose `emptySince` is older than the grace period and that have nobody in presence (someone inside a reconnect window still counts): it sets `closedAt`, empties the goals and deletes their messages and resources (and, once uploads exist, stored files). The room document stays so invite links can show the Room closed page. Sessions stay in each person's history. The host can also close a room straight away. Because presence is lost on a restart, the job first gives every open room with `emptySince: null` a fresh grace period.
 
 Room lifecycle and permissions have unit tests.

@@ -1,18 +1,30 @@
 import { createServer } from 'node:http';
+import mongoose from 'mongoose';
 import { createApp } from './app';
 import { env } from './config/env';
 import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from './db/connect';
+import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
+import { createRoomHandlers } from './realtime/handlers/room.handlers';
 import { createIo } from './realtime/io';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const app = createApp({ isDatabaseConnected, clientOrigin: env.CLIENT_ORIGIN });
 const httpServer = createServer(app);
-const io = createIo(httpServer, { clientOrigin: env.CLIENT_ORIGIN });
+const roomHandlers = createRoomHandlers();
+const io = createIo(httpServer, {
+  clientOrigin: env.CLIENT_ORIGIN,
+  registerHandlers: [roomHandlers.register],
+});
 
 httpServer.listen(env.PORT, () => {
   logger.info(`[server] listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
+});
+let stopRoomCleanup: (() => void) | undefined;
+// The first connection only: Mongoose reconnects by itself after that.
+mongoose.connection.once('connected', () => {
+  stopRoomCleanup = startRoomCleanup();
 });
 void connectToDatabase(env.MONGODB_URI);
 
@@ -35,6 +47,8 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   }, SHUTDOWN_TIMEOUT_MS).unref();
 
   try {
+    stopRoomCleanup?.();
+    roomHandlers.dispose();
     // Closes every socket and the underlying HTTP server.
     await io.close();
     await disconnectFromDatabase();
