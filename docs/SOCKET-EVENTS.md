@@ -45,10 +45,10 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 | `timer:skip` | client → server | `{ roomId }` | Host | Ack data: `{}`. Ends the current focus or break now. Room gets `timer:state` |
 | `timer:reset` | client → server | `{ roomId }` | Host | Ack data: `{}`. Back to `idle`. Room gets `timer:state` |
 | `timer:state` | server → room | `{ roomId, timer: { phase, round, endsAt, pausedRemaining }, serverNow }`. `endsAt` is ISO or null; `serverNow` is the server's clock in epoch ms | Server only. Sent after every command and whenever a phase ends on its own | n/a |
-| `goal:add` | client → server | `{ roomId, text }`. `text` is trimmed, 1 to 80 characters | Member (at most 10 goals per room) | Ack data: `{}`. Room gets `goal:update` |
-| `goal:toggle` | client → server | `{ roomId, goalId }` | Member | Ack data: `{}`. Room gets `goal:update` |
-| `goal:remove` | client → server | `{ roomId, goalId }` | Member | Ack data: `{}`. Room gets `goal:update` |
-| `goal:update` | server → room | `{ roomId, goals: [{ id, text, done, addedBy }] }` | Server only | n/a |
+| `goal:add` | client → server | `{ roomId, text }`. `text` is trimmed, 1 to 120 characters (`GOAL_TEXT_MAX`) | Member. Errors: `NOT_A_MEMBER`, `GOAL_LIMIT` (the room already has 10, `MAX_GOALS`), `GOAL_EXISTS` (same text as a goal it has), `ROOM_CLOSED` | Ack data: `{}`. Added unticked, by the sender. Room gets `goal:update`, sender included |
+| `goal:toggle` | client → server | `{ roomId, goalId }` | Member, on any goal. Errors: `NOT_A_MEMBER`, `GOAL_NOT_FOUND`, `ROOM_CLOSED` | Ack data: `{}`. Flips `done`. Room gets `goal:update` |
+| `goal:remove` | client → server | `{ roomId, goalId }` | Member who added the goal, or the current host (any goal). Errors: `NOT_A_MEMBER`, `NOT_GOAL_AUTHOR`, `GOAL_NOT_FOUND`, `ROOM_CLOSED` | Ack data: `{}`. Room gets `goal:update` |
+| `goal:update` | server → room | `{ roomId, goals: [{ id, text, done, addedBy }] }`, the full list in order. Sent before the sender's ack | Server only | n/a. Clients show their own changes before the ack and drop them when it arrives (rolled back if refused) |
 | `resource:add` | client → server | Link: `{ roomId, type: 'link', title, url }`. File: `{ roomId, type: 'file', title, url, size }` (uploaded over REST first, `size` in bytes, max 10 MB). `title` 1 to 80 characters, `url` http(s) only, up to 2048 characters | Member | Ack data: `{ resource }`. Room gets `resource:new` |
 | `resource:new` | server → room | `{ resource: { id, roomId, userId, type, title, url, size, createdAt } }` (`size` is null for links) | Server only | n/a |
 | `host:transfer` | client → server | `{ roomId, userId }` | Host | Ack data: `{}`. Room gets `presence:update` |
@@ -59,6 +59,8 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 **Timer commands.** Every `timer:*` command checks, in order, that this socket joined the room (`NOT_A_MEMBER`) and that the sender is the room's current host (`NOT_HOST`), on every call. Then `ROOM_CLOSED` if the room has closed, and `INVALID_TIMER_COMMAND` if the command doesn't fit the timer (for example `timer:pause` while idle). A refused command changes nothing and sends no `timer:state`. When the phase changes, everyone's status follows it (focus → Focusing, anything else → Break; Away is left alone) and the room gets `presence:update` before `timer:state`. Clients draw the countdown as `endsAt - (Date.now() + clockOffset)`, where `clockOffset = serverNow - Date.now()` when the state arrived; the server never sends ticks.
 
 **Disconnects are not leaves.** When a user's last socket in a room drops, they keep their place (and seat) for 30 seconds (`RECONNECT_GRACE_MS`); a `room:join` in that time picks up where they were, with the same `joinedAt` and status. After that they're removed and the room gets `presence:update`. When the host leaves for good (leave or window expired), the longest-present member becomes host and the same `presence:update` shows the new `isHost`.
+
+`goal:add`, `goal:toggle` and `goal:remove` are each limited to 10 per 5 seconds per socket (`GOAL_RATE_LIMIT`).
 
 Rate limits are per socket (so per tab), in memory, and live in `apps/server/src/realtime/socketRateLimit.ts`. The wrapper applies them to every handler for those events.
 

@@ -6,7 +6,7 @@ export const DEFAULT_ROOM_SIZE = 10;
 export const ROOM_NAME_MAX = 60;
 export const ROOM_SUBJECT_MAX = 40;
 export const ROOM_DESCRIPTION_MAX = 200;
-export const GOAL_TEXT_MAX = 80;
+export const GOAL_TEXT_MAX = 120;
 
 /** Invite codes are nanoid's URL-safe alphabet: 64^10 codes, so they can't be guessed. */
 export const INVITE_CODE_LENGTH = 10;

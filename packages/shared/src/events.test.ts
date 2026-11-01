@@ -1,10 +1,12 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { CHAT_TEXT_MAX, MAX_FILE_MB, RESOURCE_URL_MAX, WORKING_ON_MAX } from './constants';
+import { CHAT_TEXT_MAX, GOAL_TEXT_MAX, MAX_FILE_MB, RESOURCE_URL_MAX, WORKING_ON_MAX } from './constants';
 import {
   chatSendSchema,
   chatTypingSchema,
   clientEventSchemas,
   goalAddSchema,
+  goalRemoveSchema,
+  goalToggleSchema,
   hostTransferSchema,
   resourceAddSchema,
   roomJoinSchema,
@@ -123,6 +125,37 @@ describe('goalAddSchema', () => {
   it('uses the room goal rules', () => {
     expect(goalAddSchema.safeParse({ roomId, text: 'Finish set 3' }).success).toBe(true);
     expect(goalAddSchema.safeParse({ roomId, text: ' ' }).success).toBe(false);
+  });
+
+  it('trims the text and allows up to 120 characters', () => {
+    expect(GOAL_TEXT_MAX).toBe(120);
+    expect(goalAddSchema.parse({ roomId, text: '  Finish set 3 ' })).toEqual({
+      roomId,
+      text: 'Finish set 3',
+    });
+    expect(goalAddSchema.safeParse({ roomId, text: 'x'.repeat(GOAL_TEXT_MAX) }).success).toBe(true);
+    expect(goalAddSchema.safeParse({ roomId, text: 'x'.repeat(GOAL_TEXT_MAX + 1) }).success).toBe(false);
+  });
+
+  it('rejects unknown fields', () => {
+    expect(goalAddSchema.safeParse({ roomId, text: 'Finish set 3', done: true }).success).toBe(false);
+  });
+});
+
+describe.each([
+  ['goalToggleSchema', goalToggleSchema],
+  ['goalRemoveSchema', goalRemoveSchema],
+])('%s', (_, schema) => {
+  const goalId = '64b7f0c2a1b2c3d4e5f60720';
+
+  it('takes a room id and a goal id', () => {
+    expect(schema.safeParse({ roomId, goalId }).success).toBe(true);
+  });
+
+  it('rejects a bad goal id or unknown fields', () => {
+    expect(schema.safeParse({ roomId, goalId: 'goal-1' }).success).toBe(false);
+    expect(schema.safeParse({ roomId }).success).toBe(false);
+    expect(schema.safeParse({ roomId, goalId, done: true }).success).toBe(false);
   });
 });
 

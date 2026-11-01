@@ -11,6 +11,9 @@ export const CHAT_RATE_LIMIT: SocketRateLimitOptions = { limit: 5, windowMs: 500
 /** chat:typing per socket. It has no ack, so extra events are dropped. */
 export const TYPING_RATE_LIMIT: SocketRateLimitOptions = { limit: 10, windowMs: 5000 };
 
+/** Each of goal:add, goal:toggle and goal:remove per socket, so nobody floods the room with goal:update. */
+export const GOAL_RATE_LIMIT: SocketRateLimitOptions = { limit: 10, windowMs: 5000 };
+
 export interface SocketRateLimiter {
   /** Counts one event for the key. False when the key is over the limit (the event is not counted). */
   consume: (key: string) => boolean;
@@ -48,4 +51,7 @@ export function createSocketRateLimiter(
 export const eventRateLimiters: Partial<Record<ClientEventName, SocketRateLimiter>> = {
   'chat:send': createSocketRateLimiter(CHAT_RATE_LIMIT),
   'chat:typing': createSocketRateLimiter(TYPING_RATE_LIMIT),
+  'goal:add': createSocketRateLimiter(GOAL_RATE_LIMIT),
+  'goal:toggle': createSocketRateLimiter(GOAL_RATE_LIMIT),
+  'goal:remove': createSocketRateLimiter(GOAL_RATE_LIMIT),
 };

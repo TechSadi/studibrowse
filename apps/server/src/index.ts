@@ -6,6 +6,7 @@ import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from '
 import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
 import { createChatHandlers } from './realtime/handlers/chat.handlers';
+import { createGoalHandlers } from './realtime/handlers/goal.handlers';
 import { createRoomHandlers } from './realtime/handlers/room.handlers';
 import { createSettingsHandlers } from './realtime/handlers/settings.handlers';
 import { createTimerHandlers } from './realtime/handlers/timer.handlers';
@@ -24,6 +25,7 @@ const io = createIo(httpServer, {
     roomHandlers.register,
     createTimerHandlers(roomTimer),
     createChatHandlers(),
+    createGoalHandlers(),
     createSettingsHandlers(),
   ],
 });
