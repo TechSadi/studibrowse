@@ -4,13 +4,13 @@ import { z } from 'zod';
 import {
   CHAT_TEXT_MAX,
   INVITE_CODE_PATTERN,
-  MAX_FILE_MB,
   MEMBER_STATUSES,
   RESOURCE_TITLE_MAX,
   RESOURCE_URL_MAX,
   WORKING_ON_MAX,
 } from './constants';
 import { goalTextSchema, objectIdSchema, roomSettingsSchema } from './schemas/rooms';
+import { fileNameSchema, fileSizeSchema } from './schemas/uploads';
 import type { RoomDetail, RoomGoal, RoomTimer, TimerSettings } from './types/api';
 import type {
   AppNotification,
@@ -46,6 +46,7 @@ export type EmptyData = Record<string, never>;
 const roomId = objectIdSchema('That room id is not valid.');
 const userId = objectIdSchema('That user id is not valid.');
 const goalId = objectIdSchema('That goal id is not valid.');
+const resourceId = objectIdSchema('That resource id is not valid.');
 
 const roomOnlySchema = z.strictObject({ roomId });
 
@@ -99,7 +100,10 @@ const resourceUrl = z
   .max(RESOURCE_URL_MAX, 'That link is too long.')
   .pipe(z.url({ protocol: /^https?$/, error: 'That link is not valid.' }));
 
-/** Files are uploaded over REST first; this shares the returned url. Links never carry a size. */
+/**
+ * Files are uploaded to storage first (signed over REST); this shares the returned url. The server checks
+ * the stored file's real size and type rather than trusting `size`. Links never carry a size or name.
+ */
 export const resourceAddSchema = z.discriminatedUnion('type', [
   z.strictObject({ roomId, type: z.literal('link'), title: resourceTitle, url: resourceUrl }),
   z.strictObject({
@@ -107,13 +111,12 @@ export const resourceAddSchema = z.discriminatedUnion('type', [
     type: z.literal('file'),
     title: resourceTitle,
     url: resourceUrl,
-    size: z
-      .number()
-      .int()
-      .positive()
-      .max(MAX_FILE_MB * 1024 * 1024, `Files can be up to ${MAX_FILE_MB} MB.`),
+    size: fileSizeSchema,
+    fileName: fileNameSchema,
   }),
 ]);
+
+export const resourceRemoveSchema = z.strictObject({ roomId, resourceId });
 
 export const hostTransferSchema = z.strictObject({ roomId, userId });
 export const memberRemoveSchema = hostTransferSchema;
@@ -166,6 +169,7 @@ export interface ClientToServerEvents {
   'goal:toggle': WithAck<typeof goalToggleSchema, EmptyData>;
   'goal:remove': WithAck<typeof goalRemoveSchema, EmptyData>;
   'resource:add': WithAck<typeof resourceAddSchema, { resource: RoomResource }>;
+  'resource:remove': WithAck<typeof resourceRemoveSchema, EmptyData>;
   'host:transfer': WithAck<typeof hostTransferSchema, EmptyData>;
   'member:remove': WithAck<typeof memberRemoveSchema, EmptyData>;
 }
@@ -180,6 +184,7 @@ export interface ServerToClientEvents {
   'timer:state': (payload: TimerStatePayload) => void;
   'goal:update': (payload: { roomId: string; goals: RoomGoal[] }) => void;
   'resource:new': (payload: { resource: RoomResource }) => void;
+  'resource:removed': (payload: { roomId: string; resourceId: string }) => void;
   'session:logged': (payload: {
     roomId: string;
     session: SessionSummary;
@@ -210,6 +215,7 @@ export const clientEventSchemas = {
   'goal:toggle': goalToggleSchema,
   'goal:remove': goalRemoveSchema,
   'resource:add': resourceAddSchema,
+  'resource:remove': resourceRemoveSchema,
   'host:transfer': hostTransferSchema,
   'member:remove': memberRemoveSchema,
 } as const satisfies Record<keyof ClientToServerEvents, z.ZodType>;

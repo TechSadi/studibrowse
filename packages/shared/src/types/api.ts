@@ -207,3 +207,12 @@ export interface PublicRoomsResponse {
 /** A closed room is a normal answer for an invite link, not an error. An unknown code is a 404. */
 export type InvitePreviewResponse =
   { status: 'open'; room: InvitePreview } | { status: 'closed'; room: ClosedRoomPreview };
+
+/**
+ * POST /api/rooms/:id/uploads/sign. The client posts `fields` plus the file (as `file`) to `uploadUrl` and
+ * gets back JSON with the file's `secure_url`.
+ */
+export interface UploadSignResponse {
+  uploadUrl: string;
+  fields: Record<string, string>;
+}

@@ -1,5 +1,5 @@
 import { model, Schema, type HydratedDocument, type InferSchemaType } from 'mongoose';
-import { RESOURCE_TITLE_MAX, RESOURCE_TYPES, RESOURCE_URL_MAX } from '@studibrowse/shared';
+import { FILE_NAME_MAX, RESOURCE_TITLE_MAX, RESOURCE_TYPES, RESOURCE_URL_MAX } from '@studibrowse/shared';
 
 const resourceSchema = new Schema(
   {
@@ -10,6 +10,11 @@ const resourceSchema = new Schema(
     url: { type: String, required: true, maxlength: RESOURCE_URL_MAX },
     /** Bytes, for files. Null for links. */
     size: { type: Number, default: null },
+    // Files only. The derived urls are built once, when the file is shared, so serializing stays simple.
+    fileName: { type: String, default: null, maxlength: FILE_NAME_MAX },
+    downloadUrl: { type: String, default: null },
+    /** Images only. */
+    thumbnailUrl: { type: String, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

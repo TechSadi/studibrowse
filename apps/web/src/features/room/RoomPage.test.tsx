@@ -149,7 +149,8 @@ describe('RoomPage', () => {
     expect(screen.queryByRole('button', { name: /Start/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
     expect(screen.getByRole('timer').getAttribute('aria-label')).toBe('Ready to start. Round 1 of 4');
-    expect(document.title).toBe('Finals week focus · StudiBrowse');
+    // Set in an effect after the room renders, which can land a moment later under load.
+    await waitFor(() => expect(document.title).toBe('Finals week focus · StudiBrowse'));
   });
 
   it('sends the invite code for a private room', async () => {

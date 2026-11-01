@@ -13,7 +13,7 @@ export interface RoomSession {
 /**
  * Being in a room: joins when the socket connects and joins again after every reconnect (Socket.IO doesn't
  * rejoin rooms by itself; inside the server's reconnect window you keep your place). Follows presence, room
- * settings, goals and removal. Unmounting leaves the room, unless the room had already ended for you.
+ * settings, goals, shared files and removal. Unmounting leaves the room, unless the room had already ended for you.
  */
 export function useRoomSession(roomId: string, inviteCode: string | undefined): RoomSession {
   const { socket } = useSocket();
@@ -71,6 +71,12 @@ export function useRoomSession(roomId: string, inviteCode: string | undefined): 
   });
   useSocketEvent('goal:update', (payload) => {
     if (payload.roomId === roomId) dispatch({ type: 'goals', goals: payload.goals });
+  });
+  useSocketEvent('resource:new', ({ resource }) => {
+    if (resource.roomId === roomId) dispatch({ type: 'resourceAdded', resource });
+  });
+  useSocketEvent('resource:removed', (payload) => {
+    if (payload.roomId === roomId) dispatch({ type: 'resourceRemoved', resourceId: payload.resourceId });
   });
   useSocketEvent('room:removed', (payload) => {
     if (payload.roomId === roomId) dispatch({ type: 'removed' });

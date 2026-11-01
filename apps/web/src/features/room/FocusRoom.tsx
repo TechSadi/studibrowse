@@ -6,6 +6,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSocketEvent } from '../../hooks/useSocket';
 import { CreateRoomDialog } from '../rooms/CreateRoomDialog';
 import { ChatPanel } from './chat/ChatPanel';
+import { useRoomFiles } from './files/useRoomFiles';
 import { FilesPanel } from './FilesPanel';
 import styles from './FocusRoom.module.css';
 import { useRoomGoals } from './goals/useRoomGoals';
@@ -96,6 +97,7 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
   const roomGoals = useRoomGoals(room.id, room.goals, user.id);
   const { goals } = roomGoals;
   const goalsDone = goals.filter((goal) => goal.done).length;
+  const roomFiles = useRoomFiles(room.id);
 
   return (
     <>
@@ -152,7 +154,15 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
             ),
             goals: <GoalsPanel roomGoals={roomGoals} members={members} myUserId={user.id} isHost={isHost} />,
             people: <PeoplePanel members={members} myUserId={user.id} />,
-            files: <FilesPanel resources={resources} members={members} />,
+            files: (
+              <FilesPanel
+                resources={resources}
+                roomFiles={roomFiles}
+                members={members}
+                myUserId={user.id}
+                isHost={isHost}
+              />
+            ),
           }}
         />
         {drawer ? (

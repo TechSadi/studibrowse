@@ -13,6 +13,9 @@ export const FORGOT_ACCOUNT_RATE_LIMIT = { windowMs: 60 * 60 * 1000, limit: 3 };
 /** Invite previews per IP per window: plenty for real links, far too few to guess codes. */
 export const INVITE_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 60 };
 
+/** Signed uploads per person per window: a busy study session shares a handful of files, not dozens. */
+export const UPLOAD_SIGN_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 30 };
+
 export interface RateLimitOptions {
   windowMs: number;
   limit: number;

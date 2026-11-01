@@ -28,9 +28,20 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: optionalString,
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
+  // Room file uploads. Without them, outside production, uploads are off and links still work.
+  CLOUDINARY_CLOUD_NAME: optionalString,
+  CLOUDINARY_API_KEY: optionalString,
+  CLOUDINARY_API_SECRET: optionalString,
 });
 
-const REQUIRED_IN_PRODUCTION = ['GOOGLE_CLIENT_ID', 'RESEND_API_KEY', 'EMAIL_FROM'] as const;
+const REQUIRED_IN_PRODUCTION = [
+  'GOOGLE_CLIENT_ID',
+  'RESEND_API_KEY',
+  'EMAIL_FROM',
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET',
+] as const;
 
 const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   if (env.NODE_ENV !== 'production') return;

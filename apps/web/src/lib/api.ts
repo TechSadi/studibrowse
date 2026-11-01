@@ -17,6 +17,8 @@ import type {
   SignupInput,
   SuggestionsResponse,
   UpdateMeInput,
+  UploadSignInput,
+  UploadSignResponse,
   UsernameAvailabilityResponse,
 } from '@studibrowse/shared';
 
@@ -199,4 +201,9 @@ export const roomsApi = {
     request<RoomResponse>('GET', `/api/rooms/${encodeURIComponent(roomId)}`, { auth: true }),
   invite: (code: string) =>
     request<InvitePreviewResponse>('GET', `/api/rooms/invite/${encodeURIComponent(code)}`),
+  signUpload: (roomId: string, input: UploadSignInput) =>
+    request<UploadSignResponse>('POST', `/api/rooms/${encodeURIComponent(roomId)}/uploads/sign`, {
+      body: input,
+      auth: true,
+    }),
 };

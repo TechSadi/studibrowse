@@ -37,6 +37,8 @@ export type RoomSessionAction =
   | { type: 'presence'; members: PresenceMember[] }
   | { type: 'settings'; settings: RoomSettingsUpdate }
   | { type: 'goals'; goals: RoomGoal[] }
+  | { type: 'resourceAdded'; resource: RoomResource }
+  | { type: 'resourceRemoved'; resourceId: string }
   | { type: 'removed' };
 
 const ENDED_BY_CODE: Record<string, EndedStatus> = {
@@ -97,6 +99,18 @@ export function roomSessionReducer(state: RoomSessionState, action: RoomSessionA
     }
     case 'goals':
       return updateJoined(state, (joined) => ({ ...joined, room: { ...joined.room, goals: action.goals } }));
+    case 'resourceAdded':
+      return updateJoined(state, (joined) =>
+        // A rejoin's snapshot may already have it.
+        joined.resources.some((resource) => resource.id === action.resource.id)
+          ? joined
+          : { ...joined, resources: [...joined.resources, action.resource] },
+      );
+    case 'resourceRemoved':
+      return updateJoined(state, (joined) => ({
+        ...joined,
+        resources: joined.resources.filter((resource) => resource.id !== action.resourceId),
+      }));
     case 'removed':
       return { status: 'removed' };
   }

@@ -5,8 +5,10 @@ import { env } from './config/env';
 import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from './db/connect';
 import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
+import { createStorageService } from './lib/storage';
 import { createChatHandlers } from './realtime/handlers/chat.handlers';
 import { createGoalHandlers } from './realtime/handlers/goal.handlers';
+import { createResourceHandlers } from './realtime/handlers/resource.handlers';
 import { createRoomHandlers } from './realtime/handlers/room.handlers';
 import { createSettingsHandlers } from './realtime/handlers/settings.handlers';
 import { createTimerHandlers } from './realtime/handlers/timer.handlers';
@@ -15,7 +17,8 @@ import { createRoomTimer } from './realtime/roomTimer';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
-const app = createApp({ isDatabaseConnected, clientOrigin: env.CLIENT_ORIGIN });
+const storage = createStorageService(env);
+const app = createApp({ isDatabaseConnected, clientOrigin: env.CLIENT_ORIGIN, storage });
 const httpServer = createServer(app);
 const roomHandlers = createRoomHandlers();
 const roomTimer = createRoomTimer();
@@ -26,6 +29,7 @@ const io = createIo(httpServer, {
     createTimerHandlers(roomTimer),
     createChatHandlers(),
     createGoalHandlers(),
+    createResourceHandlers(storage),
     createSettingsHandlers(),
   ],
 });
@@ -36,7 +40,7 @@ httpServer.listen(env.PORT, () => {
 let stopRoomCleanup: (() => void) | undefined;
 // The first connection only: Mongoose reconnects by itself after that.
 mongoose.connection.once('connected', () => {
-  stopRoomCleanup = startRoomCleanup();
+  stopRoomCleanup = startRoomCleanup({ storage });
   // Timers keep running in the database while the server is down; pick them up again.
   roomTimer
     .restore(io)

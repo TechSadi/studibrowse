@@ -35,6 +35,18 @@ export const RECENT_MESSAGES_LIMIT = 50;
 export const MAX_GOALS = 10;
 
 export const MAX_FILE_MB = 10;
+export const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+
+/** File types the Files tab takes, by MIME type, with the format Cloudinary reports for each. */
+export const ALLOWED_FILE_TYPES = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+} as const;
+export type AllowedFileType = keyof typeof ALLOWED_FILE_TYPES;
+export type AllowedFileFormat = (typeof ALLOWED_FILE_TYPES)[AllowedFileType];
 
 /** Avatar swatches offered in onboarding and Settings, in mockup order. */
 export const AVATAR_COLORS = ['green', 'gold', 'blue', 'purple', 'red', 'olive'] as const;
@@ -113,6 +125,8 @@ export const TYPING_THROTTLE_MS = 2000;
 export const WORKING_ON_MAX = 80;
 export const RESOURCE_TITLE_MAX = 80;
 export const RESOURCE_URL_MAX = 2048;
+/** The original name of an uploaded file, kept so Download saves it under that name. */
+export const FILE_NAME_MAX = 120;
 
 export const MEMBER_STATUSES = ['focusing', 'break', 'away'] as const;
 export type MemberStatus = (typeof MEMBER_STATUSES)[number];

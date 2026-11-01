@@ -1,5 +1,6 @@
 import { ROOM_GRACE_MS } from '@studibrowse/shared';
 import { logger } from '../lib/logger';
+import type { StorageService } from '../lib/storage';
 import { Message } from '../modules/chat/message.model';
 import { Resource } from '../modules/resources/resource.model';
 import { Room } from '../modules/rooms/room.model';
@@ -9,10 +10,10 @@ export const ROOM_CLEANUP_INTERVAL_MS = 30 * 1000;
 
 /**
  * Closes rooms that have been empty for longer than the grace period: sets closedAt, empties the goals and
- * deletes the chat and resources. The room document stays so invite links can show Room closed; session
- * logs are never touched. Returns the ids it closed.
+ * deletes the chat, the resources and the room's stored files. The room document stays so invite links can
+ * show Room closed; session logs are never touched. Returns the ids it closed.
  */
-export async function closeEmptyRooms(now = new Date()): Promise<string[]> {
+export async function closeEmptyRooms(storage: StorageService, now = new Date()): Promise<string[]> {
   const cutoff = new Date(now.getTime() - ROOM_GRACE_MS);
   const candidates = await Room.find({ closedAt: null, emptySince: { $lte: cutoff } }, { _id: 1 }).lean();
   // Someone inside their reconnect window still counts as in the room. This also covers an emptySince
@@ -30,8 +31,25 @@ export async function closeEmptyRooms(now = new Date()): Promise<string[]> {
   await Promise.all([
     Message.deleteMany({ roomId: { $in: closedIds } }),
     Resource.deleteMany({ roomId: { $in: closedIds } }),
+    deleteStoredFiles(
+      storage,
+      closedIds.map((id) => id.toString()),
+    ),
   ]);
   return closedIds.map((id) => id.toString());
+}
+
+/**
+ * Deletes each room's folder, uploads that were never shared included. A failure is logged and doesn't stop
+ * the rest of the cleanup; the room is closed either way.
+ */
+async function deleteStoredFiles(storage: StorageService, roomIds: string[]): Promise<void> {
+  const results = await Promise.allSettled(roomIds.map((roomId) => storage.deleteRoomFiles(roomId)));
+  results.forEach((result, i) => {
+    if (result.status === 'rejected') {
+      logger.error({ err: result.reason, roomId: roomIds[i] }, '[rooms] failed to delete stored files');
+    }
+  });
 }
 
 /**
@@ -45,9 +63,15 @@ export async function markUnoccupiedRoomsEmpty(now = new Date()): Promise<void> 
 }
 
 /** Runs closeEmptyRooms every `intervalMs`. Returns a function that stops it. */
-export function startRoomCleanup({ intervalMs = ROOM_CLEANUP_INTERVAL_MS } = {}): () => void {
+export function startRoomCleanup({
+  storage,
+  intervalMs = ROOM_CLEANUP_INTERVAL_MS,
+}: {
+  storage: StorageService;
+  intervalMs?: number;
+}): () => void {
   const run = () =>
-    closeEmptyRooms().catch((err: unknown) => logger.error({ err }, '[rooms] cleanup failed'));
+    closeEmptyRooms(storage).catch((err: unknown) => logger.error({ err }, '[rooms] cleanup failed'));
   markUnoccupiedRoomsEmpty().catch((err: unknown) =>
     logger.error({ err }, '[rooms] failed to mark unoccupied rooms empty'),
   );

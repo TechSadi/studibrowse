@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PresenceMember, RoomDetail, RoomJoinData } from '@studibrowse/shared';
+import type { PresenceMember, RoomDetail, RoomJoinData, RoomResource } from '@studibrowse/shared';
 import { initialRoomSession, isEnded, roomSessionReducer, type RoomSessionState } from './roomSession';
 
 const room = {
@@ -99,6 +99,29 @@ describe('roomSessionReducer', () => {
         room: { name: 'Exam cram', maxSize: 6, memberCount: 2, goals: [{ text: 'Past paper' }] },
       },
     });
+  });
+
+  it('adds shared resources once each and drops removed ones', () => {
+    const notes: RoomResource = {
+      id: 'r1',
+      roomId: room.id,
+      userId: 'hana',
+      type: 'link',
+      title: 'Notes',
+      url: 'https://example.com',
+      size: null,
+      fileName: null,
+      downloadUrl: null,
+      thumbnailUrl: null,
+      createdAt: '2026-11-01T12:00:00.000Z',
+    };
+    let state = roomSessionReducer(joined, { type: 'resourceAdded', resource: notes });
+    state = roomSessionReducer(state, { type: 'resourceAdded', resource: notes });
+    state = roomSessionReducer(state, { type: 'resourceAdded', resource: { ...notes, id: 'r2' } });
+    expect(state).toMatchObject({ joined: { resources: [{ id: 'r1' }, { id: 'r2' }] } });
+
+    state = roomSessionReducer(state, { type: 'resourceRemoved', resourceId: 'r1' });
+    expect(state).toMatchObject({ joined: { resources: [{ id: 'r2' }] } });
   });
 
   it('ignores room updates before joining', () => {
