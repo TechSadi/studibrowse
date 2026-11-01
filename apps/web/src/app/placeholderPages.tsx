@@ -1,6 +1,5 @@
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { ComingSoon } from '../components/layout/ComingSoon';
-import { PlaceholderScreen } from '../components/layout/PlaceholderScreen';
 import { LogoutButton } from '../features/auth/LogoutButton';
 
 // TODO: each of these is replaced by its real screen in a later phase-1 step.
@@ -35,16 +34,5 @@ export function ProfilePage() {
     <ComingSoon title={`@${username}`}>
       Profiles show what someone is hosting now, their stats, recent rooms and followers.
     </ComingSoon>
-  );
-}
-
-export function InvitePage() {
-  return (
-    <PlaceholderScreen title="Room invite">
-      <p>Invite links open once rooms are live. Ask your host to share it again soon.</p>
-      <Link className="text-link" to="/">
-        Go to StudiBrowse
-      </Link>
-    </PlaceholderScreen>
   );
 }

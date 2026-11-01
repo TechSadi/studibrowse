@@ -23,8 +23,9 @@ interface AvatarStackProps {
 export function AvatarStack({ people, more }: AvatarStackProps) {
   return (
     <div className={styles.stack}>
-      {people.map((p) => (
-        <Avatar key={p.initials} initials={p.initials} tone={p.tone} size="sm" />
+      {/* Two people can share initials, so the position is part of the key. */}
+      {people.map((p, i) => (
+        <Avatar key={`${i}-${p.initials}`} initials={p.initials} tone={p.tone} size="sm" />
       ))}
       {more ? <span className={`${styles.more} num`}>+{more}</span> : null}
     </div>

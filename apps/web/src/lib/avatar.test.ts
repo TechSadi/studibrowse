@@ -1,16 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avatarTone, initialsOf } from './avatar';
-
-describe('initialsOf', () => {
-  it.each([
-    ['Alex Smith', 'AS'],
-    ['  maya   de la cruz ', 'MC'],
-    ['maya', 'MA'],
-    ['', '?'],
-  ])('%j → %j', (name, initials) => {
-    expect(initialsOf(name)).toBe(initials);
-  });
-});
+import { avatarTone } from './avatar';
 
 describe('avatarTone', () => {
   it('maps colours to tone slots in mockup order', () => {

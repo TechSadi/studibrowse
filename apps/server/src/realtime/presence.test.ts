@@ -11,6 +11,7 @@ import {
   isSocketInRoom,
   listMembers,
   longestPresentMember,
+  memberPreview,
   removeMember,
   removeSocket,
   resetPresence,
@@ -219,5 +220,16 @@ describe('focusCredits', () => {
     join('room-1', 'maya', 's1', { status: 'focusing', now: at(100) });
     expect(focusCredits('room-1', at(100), 60_000)).toEqual([]);
     expect(focusCredits('missing', at(100), 60_000)).toEqual([]);
+  });
+
+  it('previews the first people in, longest present first, with only name and colour', () => {
+    join('room-1', 'maya', 's1', { now: at(30) });
+    join('room-1', 'jordan', 's2', { now: at(10) });
+    join('room-1', 'alex', 's3', { now: at(20) });
+    expect(memberPreview('room-1', 2)).toEqual([
+      { name: 'jordan', avatarColor: 'green' },
+      { name: 'alex', avatarColor: 'green' },
+    ]);
+    expect(memberPreview('room-2', 4)).toEqual([]);
   });
 });

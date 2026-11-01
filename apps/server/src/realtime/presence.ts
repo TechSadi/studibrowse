@@ -205,6 +205,13 @@ export function listMembers(roomId: string): PresenceMember[] {
   }));
 }
 
+/** The first `limit` people in the room, longest present first, for the invite preview's avatar stack. */
+export function memberPreview(roomId: string, limit: number): Pick<MemberProfile, 'name' | 'avatarColor'>[] {
+  return sortedMembers(roomId)
+    .slice(0, limit)
+    .map(([, member]) => ({ name: member.profile.name, avatarColor: member.profile.avatarColor }));
+}
+
 /** People in the room, each counted once however many tabs they have open. */
 export function countMembers(roomId: string): number {
   return rooms.get(roomId)?.members.size ?? 0;

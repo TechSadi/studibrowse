@@ -147,10 +147,10 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 | `POST /api/rooms` | signed in | `createRoomSchema`: name (≤ 60), subject (optional, ≤ 40), description (optional, ≤ 200), `isPublic`, `maxSize` 2 to 20, up to 10 goals (≤ 80 each), `timerSettings` (the `TIMER_LIMITS` ranges, plus `autoStart`). The creator becomes the host. Answers 201 with the `RoomDetail`. |
 | `GET /api/rooms/public` | signed in | Rooms worth joining. `page` (9 per page, `nextPage` is null on the last), `subject` (exact, any case), `q` (name or subject contains, plain text), `filter` = `all`, `open` (has space), `focus` or `break`. |
 | `GET /api/rooms/:id` | signed in | One room. |
-| `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview: name, subject, host, member count, size, timer and goal texts. No ids or codes. 404 `ROOM_NOT_FOUND`, 410 `ROOM_CLOSED`. |
+| `GET /api/rooms/invite/:code` | public, rate limited per IP | Invite preview. An open room answers `{ status: 'open', room }`: id, name, subject, description, host, member count, the first 4 people as initials and avatar colour only, size, timer and goal texts. A closed room answers `{ status: 'closed', room }`: name, host and `roomsPerWeek` (rooms the host opened in the last 4 weeks ÷ 4, rounded), for the Room closed page. 404 `ROOM_NOT_FOUND` for an unknown code or a host account that's gone. |
 
 - **Live** means `closedAt` is null. A new room starts with `emptySince` set (nobody is connected yet), so the cleanup job removes rooms nobody ever opened. Its timer starts idle: `{ phase: 'idle', round: 1, endsAt: null, pausedRemaining: null }`.
-- **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission.
+- **Visibility:** the public list only ever matches `isPublic: true, closedAt: null`. Private rooms never appear there, not even to their host or the host's followers. `GET /:id` answers 404 for someone else's private room (the same answer as a missing room, so ids can't be probed). The invite code is returned to the host, and for public rooms. The invite preview works for private rooms too, because holding the code is the permission. It includes the room id so a signed-in visitor can be sent into the room; the id grants nothing on its own, since joining a private room still needs the code.
 - **Order:** rooms hosted by people you follow first, then newest (`$addFields hostFollowed` in an aggregation, with the host joined by `$lookup`). Rooms whose host account is gone are left out.
 - **Phase filters** count only running timers: a paused or not-yet-started room is neither "In a focus round" nor "On a break".
 - **Invite codes:** `nanoid(10)` (URL-safe alphabet, cryptographic randomness, 64^10 codes), unique index, retried on the rare collision. `INVITE_CODE_PATTERN` in shared is the one definition of a valid code; the Home join box uses it too.
@@ -201,6 +201,15 @@ open ──last socket leaves──▶ empty (emptySince = now) ──5 min, nob
 - **Removal:** a removed member's sockets get `room:removed { roomId }` on `user:<id>`. The client shows "You were removed" and doesn't rejoin. The server sends it once `member:remove` is built (Phase 4).
 
 Room lifecycle and permissions have unit tests.
+
+## Invite links (web, `features/invite/`)
+
+`/r/:inviteCode` (`InvitePage.tsx`) works signed in or out and has no sidebar; it shares the `.solo` layout (`components/layout/SoloScreen.tsx`) with the room state screens.
+
+- A code that doesn't match `INVITE_CODE_PATTERN` shows "We couldn't find that room" without a request, as does a 404.
+- **Open room, signed in:** straight to `/room/:id?invite=<code>` (onboarding first, through `RequireOnboarded`, if it isn't finished).
+- **Open room, signed out:** the preview (mockup `#invite`). Sign up to join and Log in go to `/signup` or `/login` with `?next=/r/<code>`, so after signing up (and onboarding) you come back here and go into the room; a room that closed in the meantime shows Room closed instead. The Sign up / Log in switch links keep `?next=`. The preview is fetched again every 30 seconds, and just after the current phase ends (`invitePreview.ts › refetchDelay`); the time left is worked out from `endsAt` every second.
+- **Closed room:** Room closed (mockup `#closed`) with a Follow button for the host (sign up first when signed out; hidden when you were the host) and links to live rooms and Create a room.
 
 ## Focus room (web, `features/room/`)
 

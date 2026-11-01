@@ -56,7 +56,7 @@ describe('closeEmptyRooms', () => {
     expect(saved?.goals).toEqual([]);
     expect(await Message.countDocuments({ roomId: room.id })).toBe(0);
     expect(await Resource.countDocuments({ roomId: room.id })).toBe(0);
-    await expect(getInvitePreview(room.inviteCode!)).rejects.toMatchObject({ code: 'ROOM_CLOSED' });
+    expect(await getInvitePreview(room.inviteCode!)).toMatchObject({ status: 'closed' });
   });
 
   it('leaves alone rooms inside the grace period, occupied rooms and rooms already closed', async () => {

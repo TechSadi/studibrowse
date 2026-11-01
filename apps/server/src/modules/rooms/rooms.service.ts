@@ -4,7 +4,7 @@ import {
   RECENT_MESSAGES_LIMIT,
   type AvatarColor,
   type CreateRoomData,
-  type InvitePreview,
+  type InvitePreviewResponse,
   type PublicRoomsQuery,
   type PublicRoomsResponse,
   type RoomDetail,
@@ -12,7 +12,13 @@ import {
   type RoomJoinData,
   type RoomSettingsUpdate,
 } from '@studibrowse/shared';
-import { countMembers, fullRoomIds, isMember, type MemberProfile } from '../../realtime/presence';
+import {
+  countMembers,
+  fullRoomIds,
+  isMember,
+  memberPreview,
+  type MemberProfile,
+} from '../../realtime/presence';
 import { idleTimer } from '../../realtime/timer';
 import { unauthenticated } from '../auth/auth.errors';
 import { toChatMessage, type MessageRecord } from '../chat/chat.serializer';
@@ -24,6 +30,7 @@ import { generateInviteCode } from './inviteCode';
 import { Room } from './room.model';
 import { roomClosed, roomNotFound, roomTooSmall } from './rooms.errors';
 import {
+  toClosedRoomPreview,
   toInvitePreview,
   toRoomDetail,
   toRoomGoal,
@@ -141,13 +148,38 @@ export async function getRoom(userId: string, roomId: string): Promise<RoomDetai
   return toRoomDetail(room, host, { memberCount: countMembers(roomId), viewerId: userId });
 }
 
-/** Preview data for an invite link. Holding the code is what grants it, so private rooms preview too. */
-export async function getInvitePreview(code: string): Promise<InvitePreview> {
+/** How many people the invite preview's avatar stack shows before "+N". */
+export const INVITE_PREVIEW_MEMBERS = 4;
+
+const HOSTING_WINDOW_WEEKS = 4;
+
+/**
+ * Preview data for an invite link. Holding the code is what grants it, so private rooms preview too. A closed
+ * room still answers, with just enough for the Room closed page to offer following the host.
+ */
+export async function getInvitePreview(code: string, now = new Date()): Promise<InvitePreviewResponse> {
   const room = await Room.findOne({ inviteCode: code }).lean<RoomRecord>();
   if (!room) throw roomNotFound();
-  if (room.closedAt) throw roomClosed();
   const host = await findHost(room);
-  return toInvitePreview(room, host, countMembers(room._id.toString()));
+  if (room.closedAt) {
+    const roomsPerWeek = await hostRoomsPerWeek(room.hostId, now);
+    return { status: 'closed', room: toClosedRoomPreview(room, host, roomsPerWeek) };
+  }
+  const roomId = room._id.toString();
+  return {
+    status: 'open',
+    room: toInvitePreview(room, host, {
+      memberCount: countMembers(roomId),
+      members: memberPreview(roomId, INVITE_PREVIEW_MEMBERS),
+    }),
+  };
+}
+
+/** Rooms someone opened per week over the last 4 weeks, rounded ("Hosts about 3 rooms a week"). */
+export async function hostRoomsPerWeek(hostId: Types.ObjectId | string, now = new Date()): Promise<number> {
+  const since = new Date(now.getTime() - HOSTING_WINDOW_WEEKS * 7 * 24 * 60 * 60 * 1000);
+  const count = await Room.countDocuments({ hostId, createdAt: { $gt: since, $lte: now } });
+  return Math.round(count / HOSTING_WINDOW_WEEKS);
 }
 
 async function findHost(room: RoomRecord): Promise<HostRecord> {

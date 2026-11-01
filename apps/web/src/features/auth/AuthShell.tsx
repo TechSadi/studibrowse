@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { Avatar, AvatarStack } from '../../components/ui/Avatar';
 import { Brand } from '../../components/ui/Brand';
 import { LivePill } from '../../components/ui/Pill';
@@ -80,6 +80,8 @@ interface AuthShellProps {
 
 /** Split layout shared by Sign up, Log in, Forgot password and Reset password. */
 export function AuthShell({ title, switchTo, children }: AuthShellProps) {
+  // Keep ?next= (e.g. from an invite link) when switching between Sign up and Log in.
+  const { search } = useLocation();
   useEffect(() => {
     document.title = `${title} · StudiBrowse`;
   }, [title]);
@@ -96,14 +98,14 @@ export function AuthShell({ title, switchTo, children }: AuthShellProps) {
             {switchTo === 'login' ? (
               <>
                 Have an account?{' '}
-                <Link className="text-link" to="/login">
+                <Link className="text-link" to={{ pathname: '/login', search }}>
                   Log in
                 </Link>
               </>
             ) : (
               <>
                 New here?{' '}
-                <Link className="text-link" to="/signup">
+                <Link className="text-link" to={{ pathname: '/signup', search }}>
                   Sign up
                 </Link>
               </>

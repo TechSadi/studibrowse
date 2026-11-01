@@ -1,9 +1,7 @@
-import { useEffect } from 'react';
-import { Link } from 'react-router';
-import { Brand } from '../../components/ui/Brand';
+import { useEffect, type ReactNode } from 'react';
+import { SoloCard, SoloScreen } from '../../components/layout/SoloScreen';
 import { Button, ButtonLink } from '../../components/ui/Button';
 import { Icon, type IconName } from '../../components/ui/Icon';
-import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { CREATE_ROOM_PATH } from '../home/useCreateRoomDialog';
 import type { EndedStatus } from './roomSession';
 import styles from './RoomStateScreen.module.css';
@@ -49,10 +47,14 @@ interface RoomStateScreenProps {
   /** The server's message, for `error`. */
   message?: string;
   onRetry: () => void;
+  /** Where the logo goes: Home, or Welcome for pages signed-out visitors see. */
+  homeTo?: string;
+  /** Top-right actions, before the theme toggle. */
+  actions?: ReactNode;
 }
 
 /** Everything the room route shows instead of the room (styled like the mockup's `#closed` card). */
-export function RoomStateScreen({ kind, message, onRetry }: RoomStateScreenProps) {
+export function RoomStateScreen({ kind, message, onRetry, homeTo = '/home', actions }: RoomStateScreenProps) {
   const copy: ScreenCopy =
     kind === 'error'
       ? { icon: 'x', title: 'We couldn’t open the room', text: message ?? 'Something went wrong.' }
@@ -63,14 +65,8 @@ export function RoomStateScreen({ kind, message, onRetry }: RoomStateScreenProps
   }, [copy.title]);
 
   return (
-    <div className={styles.solo}>
-      <header className={styles.top}>
-        <Link to="/home" className={styles.home} aria-label="StudiBrowse home">
-          <Brand />
-        </Link>
-        <ThemeToggle />
-      </header>
-      <main className={styles.card}>
+    <SoloScreen homeTo={homeTo} actions={actions}>
+      <SoloCard className={styles.card}>
         <span className={styles.ico}>
           <Icon name={copy.icon} />
         </span>
@@ -107,7 +103,7 @@ export function RoomStateScreen({ kind, message, onRetry }: RoomStateScreenProps
             )}
           </div>
         )}
-      </main>
-    </div>
+      </SoloCard>
+    </SoloScreen>
   );
 }

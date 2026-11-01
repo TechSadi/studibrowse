@@ -92,8 +92,8 @@ const roomSchema = new Schema(
 roomSchema.index({ inviteCode: 1 }, { unique: true });
 // Rooms worth joining: live public rooms, newest first.
 roomSchema.index({ isPublic: 1, closedAt: 1, createdAt: -1 });
-// Profiles' "Hosting now" and room-opened notifications.
-roomSchema.index({ hostId: 1 });
+// Profiles' "Hosting now", room-opened notifications and how often someone hosts (the Room closed page).
+roomSchema.index({ hostId: 1, createdAt: -1 });
 
 export type RoomDocument = HydratedDocument<InferSchemaType<typeof roomSchema>>;
 
