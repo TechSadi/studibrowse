@@ -254,6 +254,26 @@ Indexes: `{ participants.userId, startedAt: -1 }` for weeks and the summary, `{ 
 - **Follow buttons** (profile, followers lists, onboarding, Room closed) all use `features/follows/useFollowToggle.ts`: it calls the follow endpoint, swaps in the returned user with `setUser`, reloads everything under `['people']`, and shows the "Following" toast.
 - **Live dots** in the sidebar's People you follow: `features/follows/useFollowLive.ts` sends `follows:watch` on every connect and whenever `user.following` changes, then applies `follows:live`. A live person's row links to their room ("Hosting … Click to join."), otherwise to their profile. Only **public** rooms light the dot (see `docs/SOCKET-EVENTS.md` › Following).
 
+## Notifications (`modules/notifications/`, web `features/notifications/`)
+
+- **Sender** (`createNotificationSender({ emit })` in `notifications.service.ts`): saves to the `notifications` collection, then `emit`s `notification:new` to `user:<id>` (wired in `index.ts`). Who gets what:
+
+  | Type | Trigger | Recipients |
+  | --- | --- | --- |
+  | `roomStarted` | `POST /api/rooms` (`onRoomCreated`) | The host's followers. **Public rooms only**: followers can't see a private room, so nobody hears about one |
+  | `memberJoined` | `room:join` brings in someone new (`onJoined` in `room.handlers.ts`; not another tab) | The room's current host (from presence), never the joiner |
+  | `roomFull` | The same join leaves the room at `maxSize` | The current host. Not again for that room within 10 minutes (`ROOM_FULL_GROUP_WINDOW_MS`) |
+  | `roundEnded` | A focus phase ran out or was skipped (`onRoundEnded` in `roomTimer.ts`; once after an outage's catch-up) | Everyone in the room |
+
+  Each type is skipped for anyone whose matching `notificationPrefs` toggle is off (`NOTIFICATION_PREF_BY_TYPE`), and every recipient must pass `canSeeRoom` (public, or they host it or are in it). Triggers are fire-and-forget: a failure is logged and never holds up the join, the timer or the request.
+- **Grouping:** joins to the same room within a minute (`NOTIFICATION_GROUP_WINDOW_MS`, from the first one) update one unread notification ("Maya Kapoor and 4 others joined your room"), behind a per-host-and-room lock. Each update moves it to the top (`createdAt` = now) and is sent again **with the same id**, so clients replace it. Someone rejoining inside the window isn't counted twice. Internal fields (`actorIds`, `actorName`, `groupStartedAt`, `round`) are never serialised.
+- **REST** (`notifications.routes.ts`, all signed in):
+  - `GET /api/notifications?filter=all|unread|rooms&cursor=&limit=` answers `NotificationsResponse`: newest first, `rooms` meaning `roomStarted`. The opaque cursor is `(createdAt, _id)` (`notificationCursor.ts`). Each item adds `roomOpen` (the room hasn't closed) so Join can be hidden.
+  - `GET /api/notifications/unread-count` answers `{ count }`.
+  - `POST /api/notifications/read` takes `{ id }` or `{ all: true }` and answers the new `{ count }`. Someone else's id is a 404 `NOTIFICATION_NOT_FOUND`, the same as a missing one.
+- **Web:** `NotificationListener` (mounted in `RequireOnboarded`, so the focus room has it too) applies `notification:new` to every cached list (`['notifications', 'list', filter]`, upsert by id) and refetches the unread count. `NotificationBell` is the trigger and dropdown in the top bar, the phone header and the sidebar (with the count). `NotificationsPage` has the All / Unread / Rooms opened tabs (`?filter=`), Today and Earlier (local midnight), and Show older. Opening one marks it read; an open room alert joins the room.
+- **Browser notifications** (`lib/browserNotifications.ts`): permission is only requested from the Enable button on the Notifications page or the dropdown, never on load. "Not now" is remembered as `sb-notif-prompt-dismissed`. One is shown only when permission is granted **and the tab is hidden**, tagged with the notification id so a growing burst replaces itself.
+
 ## Room lifecycle
 
 ```

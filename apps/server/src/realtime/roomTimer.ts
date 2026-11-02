@@ -33,6 +33,8 @@ export type TimerCommand = 'start' | 'pause' | 'skip' | 'reset';
 export interface RoomTimerOptions {
   /** The clock. Tests can replace it. */
   now?: () => Date;
+  /** A focus round ended (ran out or was skipped), for notifications. A failure is logged. */
+  onRoundEnded?: (roomId: string, round: number) => Promise<void>;
 }
 
 export interface RoomTimer {
@@ -58,6 +60,8 @@ interface Outcome {
   ended: TimerRun | null;
   /** Whether anyone's status moved with the phase, so the room needs a presence:update. */
   statusChanged: boolean;
+  /** The focus round that just ended, if one did. After an outage, only the last of them. */
+  roundEnded: number | null;
 }
 
 /** Focus time counts only while a focus phase is actually running. */
@@ -75,7 +79,7 @@ function completeRound(run: TimerRun): TimerRun {
   return { ...run, roundsCompleted: run.roundsCompleted + 1 };
 }
 
-export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {}): RoomTimer {
+export function createRoomTimer({ now = () => new Date(), onRoundEnded }: RoomTimerOptions = {}): RoomTimer {
   const timeouts = new Map<string, NodeJS.Timeout>();
   // A command and a firing timeout for the same room must not interleave their load → save.
   const withRoom = createKeyedLock();
@@ -101,7 +105,7 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
   function publish(
     io: TypedServer,
     roomId: string,
-    { timer, statusChanged }: Outcome,
+    { timer, statusChanged, roundEnded }: Outcome,
     logged: LoggedSession | null,
   ): void {
     if (timer.endsAt) schedule(io, roomId, timer.endsAt);
@@ -112,6 +116,11 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
     if (logged) channel.emit('session:logged', { roomId, ...logged });
     // Every change, not just new phases: a pause changes the card's text and the focus and break filters.
     broadcastRoomCard(io, roomId);
+    if (roundEnded !== null) {
+      onRoundEnded?.(roomId, roundEnded).catch((err: unknown) =>
+        logger.error({ err, roomId }, 'failed to notify about a round ending'),
+      );
+    }
   }
 
   /** Saves the outcome, logging the run first if it ended. */
@@ -126,6 +135,7 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
     let run = room.run;
     let next: TimerState;
     let startsRun = false;
+    let roundEnded: number | null = null;
     if (command === 'start') {
       // One button: Start from idle or done, Resume when paused (including a phase waiting for the host).
       if (isPaused(timer)) {
@@ -138,7 +148,10 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
       next = pause(timer, settings, at);
     } else if (command === 'skip') {
       next = skip(timer, settings, at);
-      if (timer.phase === 'focus') run = completeRound(run);
+      if (timer.phase === 'focus') {
+        run = completeRound(run);
+        roundEnded = timer.round;
+      }
     } else {
       next = reset(timer, settings, at);
     }
@@ -149,7 +162,7 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
     const ended = endsRun && isRunActive(run) ? run : null;
     if (startsRun) run = newRun(at);
     else if (endsRun) run = emptyRun();
-    return { timer: next, run, ended, statusChanged };
+    return { timer: next, run, ended, statusChanged, roundEnded };
   }
 
   async function command(io: TypedServer, roomId: string, name: TimerCommand): Promise<void> {
@@ -181,11 +194,15 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
         let previous = room.timer;
         let run = room.run;
         let statusChanged = false;
+        let roundEnded: number | null = null;
         let endedAt = now();
         for (const step of steps) {
           // Every step ends a running phase, so `previous.endsAt` is set.
           endedAt = previous.endsAt!;
-          if (previous.phase === 'focus') run = completeRound(run);
+          if (previous.phase === 'focus') {
+            run = completeRound(run);
+            roundEnded = previous.round;
+          }
           statusChanged = followTimer(roomId, previous, step, endedAt) || statusChanged;
           previous = step;
         }
@@ -197,6 +214,7 @@ export function createRoomTimer({ now = () => new Date() }: RoomTimerOptions = {
           run: isDone ? emptyRun() : run,
           ended: isDone && isRunActive(run) ? run : null,
           statusChanged,
+          roundEnded,
         };
         const logged = await settle(roomId, outcome, endedAt);
         publish(io, roomId, outcome, logged);

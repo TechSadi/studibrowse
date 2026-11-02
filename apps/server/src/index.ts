@@ -6,6 +6,7 @@ import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from '
 import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
 import { createStorageService } from './lib/storage';
+import { createNotificationSender } from './modules/notifications/notifications.service';
 import { createChatHandlers } from './realtime/handlers/chat.handlers';
 import { createFollowHandlers } from './realtime/handlers/follow.handlers';
 import { createGoalHandlers } from './realtime/handlers/goal.handlers';
@@ -17,6 +18,7 @@ import { createTimerHandlers } from './realtime/handlers/timer.handlers';
 import { createIo } from './realtime/io';
 import { broadcastRoomCard, resetLobby } from './realtime/lobby';
 import { createRoomTimer } from './realtime/roomTimer';
+import { userRoom } from './realtime/types';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -26,11 +28,26 @@ const app = createApp({
   clientOrigin: env.CLIENT_ORIGIN,
   storage,
   // Only called for requests, which can't arrive before io exists.
-  onRoomCreated: (roomId) => broadcastRoomCard(io, roomId),
+  onRoomCreated: (roomId) => {
+    broadcastRoomCard(io, roomId);
+    notifications
+      .roomOpened(roomId)
+      .catch((err: unknown) => logger.error({ err, roomId }, '[notifications] failed to tell followers'));
+  },
 });
 const httpServer = createServer(app);
-const roomTimer = createRoomTimer();
-const roomHandlers = createRoomHandlers({ onDepart: roomTimer.memberLeaving });
+const notifications = createNotificationSender({
+  // Only called after something happened over a socket or a request, so io exists by then.
+  emit: (userId, notification) => io.to(userRoom(userId)).emit('notification:new', { notification }),
+});
+const roomTimer = createRoomTimer({ onRoundEnded: notifications.roundEnded });
+const roomHandlers = createRoomHandlers({
+  onDepart: roomTimer.memberLeaving,
+  onJoined: async (roomId, userId) => {
+    await notifications.memberJoined(roomId, userId);
+    await notifications.roomFull(roomId);
+  },
+});
 const io = createIo(httpServer, {
   clientOrigin: env.CLIENT_ORIGIN,
   registerHandlers: [

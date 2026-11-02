@@ -38,6 +38,11 @@ export interface RoomHandlerOptions {
    * saved (the room timer's memberLeaving). A failure is logged and doesn't stop them leaving.
    */
   onDepart?: (roomId: string, userId: string, at: Date) => Promise<void>;
+  /**
+   * Runs after someone new is in the room (not another tab of someone already here), for notifications. It
+   * doesn't hold up their join, and a failure is logged.
+   */
+  onJoined?: (roomId: string, userId: string) => Promise<void>;
   /** The clock. Tests share one with the room timer. */
   now?: () => Date;
 }
@@ -52,6 +57,7 @@ export interface RoomHandlers {
 export function createRoomHandlers({
   reconnectGraceMs = RECONNECT_GRACE_MS,
   onDepart,
+  onJoined,
   now = () => new Date(),
 }: RoomHandlerOptions = {}): RoomHandlers {
   const pendingDepartures = new Map<string, NodeJS.Timeout>();
@@ -116,6 +122,9 @@ export function createRoomHandlers({
       if (outcome === 'joined') {
         broadcastRoomCard(io, roomId);
         broadcastFollowLive(io, [userId]);
+        onJoined?.(roomId, userId).catch((err: unknown) =>
+          logger.error({ err, roomId, userId }, 'failed to notify about someone joining'),
+        );
       }
       return { ...snapshot, members: listMembers(roomId), serverNow: now().getTime() };
     });

@@ -1,4 +1,5 @@
 import type { AvatarColor, ProgressRange, TimerPhase } from '../constants';
+import type { NotificationListItem } from './realtime';
 
 /** Body of every error response from the API. */
 export interface ApiErrorBody {
@@ -372,4 +373,16 @@ export interface LatestSessionResponse {
   week: { focusMins: number; goalMins: number };
   /** Your current streak if you studied today, otherwise 0. */
   streakDays: number;
+}
+
+/** GET /api/notifications: yours, newest first. */
+export interface NotificationsResponse {
+  notifications: NotificationListItem[];
+  /** Pass as `cursor` for the next (older) page; null on the last page. */
+  nextCursor: string | null;
+}
+
+/** GET /api/notifications/unread-count, and the answer to POST /api/notifications/read. */
+export interface UnreadCountResponse {
+  count: number;
 }

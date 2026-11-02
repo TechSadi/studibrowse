@@ -10,6 +10,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import { createGoogleVerifier, type GoogleVerifier } from './modules/auth/google';
 import { createHealthRouter } from './modules/health/health.routes';
+import { createNotificationsRouter } from './modules/notifications/notifications.routes';
 import { createProgressRouter } from './modules/progress/progress.routes';
 import { createRoomsRouter } from './modules/rooms/rooms.routes';
 import { createSessionsRouter } from './modules/sessions/sessions.routes';
@@ -56,6 +57,7 @@ export function createApp({
   app.use('/api/rooms', createRoomsRouter({ storage, onRoomCreated }));
   app.use('/api/sessions', createSessionsRouter());
   app.use('/api/progress', createProgressRouter());
+  app.use('/api/notifications', createNotificationsRouter());
 
   app.use(notFoundHandler);
   app.use(errorHandler);

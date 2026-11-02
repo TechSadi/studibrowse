@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router';
+import { NotificationListener } from '../notifications/NotificationListener';
 import { useAuth } from './AuthContext';
 import styles from './guards.module.css';
 import { loginPathFor, resolveSignedInPath } from './redirects';
@@ -42,7 +43,12 @@ export function RequireOnboarded() {
   if (state.user && !state.user.onboardedAt) {
     return <Navigate to={resolveSignedInPath(state.user, location.pathname + location.search)} replace />;
   }
-  return <Outlet />;
+  return (
+    <>
+      <NotificationListener />
+      <Outlet />
+    </>
+  );
 }
 
 /** Wraps /onboarding (inside RequireAuth). Once it's finished or skipped, carry on to `next` or Home. */

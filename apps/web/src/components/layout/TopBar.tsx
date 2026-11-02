@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
+import { NotificationBellButton } from '../../features/notifications/NotificationBell';
 import { useSearchParam } from '../../hooks/useSearchParam';
 import { useSlashShortcut } from '../../hooks/useSlashShortcut';
 import { ConnectionStatus } from '../ui/ConnectionStatus';
@@ -60,9 +61,7 @@ export function TopBar({ crumb }: { crumb: string }) {
       <TopSearch />
       <ConnectionStatus />
       <ThemeToggle />
-      <Link to="/notifications" className={iconButton.iconBtn} aria-label="Notifications">
-        <Icon name="bell" />
-      </Link>
+      <NotificationBellButton className={iconButton.iconBtn} />
     </div>
   );
 }

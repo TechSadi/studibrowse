@@ -6,6 +6,7 @@ import type {
   FollowListUser,
   InvitePreviewResponse,
   MySession,
+  NotificationListItem,
   ProgressSummaryResponse,
   PublicUser,
   RoomDetail,
@@ -90,6 +91,20 @@ export function makeMySession(overrides: Partial<MySession> = {}): MySession {
   };
 }
 
+export function makeNotification(overrides: Partial<NotificationListItem> = {}): NotificationListItem {
+  return {
+    id: `notification-${Math.random().toString(36).slice(2, 8)}`,
+    type: 'roomStarted',
+    roomId: 'room-1',
+    roomName: 'Late-night exam grind',
+    text: 'Maya Kapoor opened a room',
+    read: false,
+    createdAt: new Date().toISOString(),
+    roomOpen: true,
+    ...overrides,
+  };
+}
+
 /** A room in the mock: the detail the host sees. Strangers get the same shape (the mock doesn't hide codes). */
 export function makeRoom(host: PublicUser, overrides: Partial<RoomDetail> = {}): RoomDetail {
   return {
@@ -133,6 +148,8 @@ export class MockApi {
   followLists: Record<string, FollowListUser[]> = {};
   /** Rows per page of a follow list. */
   followPageSize = 20;
+  /** GET /api/notifications for whoever is signed in, newest first. One page. */
+  notifications: NotificationListItem[] = [];
 
   addAccount(user: PublicUser, password: string) {
     this.accounts.push({ user, password });
@@ -272,6 +289,26 @@ export class MockApi {
           status: 200,
           json: { sessions, nextCursor: end < this.mySessions.length ? String(end) : null },
         };
+      }
+      case 'GET /api/notifications': {
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const filter = url.searchParams.get('filter') ?? 'all';
+        const notifications = this.notifications.filter((n) =>
+          filter === 'unread' ? !n.read : filter === 'rooms' ? n.type === 'roomStarted' : true,
+        );
+        return { status: 200, json: { notifications, nextCursor: null } };
+      }
+      case 'GET /api/notifications/unread-count':
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        return { status: 200, json: { count: this.notifications.filter((n) => !n.read).length } };
+      case 'POST /api/notifications/read': {
+        this.record('markRead', body);
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const id = typeof body.id === 'string' ? body.id : null;
+        this.notifications = this.notifications.map((n) =>
+          id === null || n.id === id ? { ...n, read: true } : n,
+        );
+        return { status: 200, json: { count: this.notifications.filter((n) => !n.read).length } };
       }
       case 'GET /api/rooms/public': {
         const me = this.currentAccount();

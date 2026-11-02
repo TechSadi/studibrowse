@@ -11,8 +11,11 @@ import type {
   InvitePreviewResponse,
   LatestSessionResponse,
   LoginInput,
+  MarkReadData,
   MeResponse,
   MySessionsResponse,
+  NotificationFilter,
+  NotificationsResponse,
   ProfileResponse,
   ProgressSummaryResponse,
   PublicRoomsQuery,
@@ -21,6 +24,7 @@ import type {
   RoomResponse,
   SignupInput,
   SuggestionsResponse,
+  UnreadCountResponse,
   UpdateMeInput,
   UploadSignInput,
   UploadSignResponse,
@@ -229,6 +233,16 @@ export const sessionsApi = {
     request<LatestSessionResponse>('GET', `/api/sessions/mine/latest${queryString({ roomId, since })}`, {
       auth: true,
     }),
+};
+
+export const notificationsApi = {
+  list: ({ filter, cursor }: { filter: NotificationFilter; cursor?: string | undefined }) =>
+    request<NotificationsResponse>('GET', `/api/notifications${queryString({ filter, cursor })}`, {
+      auth: true,
+    }),
+  unreadCount: () => request<UnreadCountResponse>('GET', '/api/notifications/unread-count', { auth: true }),
+  markRead: (input: MarkReadData) =>
+    request<UnreadCountResponse>('POST', '/api/notifications/read', { body: input, auth: true }),
 };
 
 export const progressApi = {

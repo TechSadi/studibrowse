@@ -7,13 +7,14 @@ import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { SignupPage } from '../features/auth/SignupPage';
 import { HomePage } from '../features/home/HomePage';
 import { InvitePage } from '../features/invite/InvitePage';
+import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { ProgressPage } from '../features/progress/ProgressPage';
 import { RoomPage } from '../features/room/RoomPage';
 import { WelcomePage } from '../features/welcome/WelcomePage';
 import { NotFoundPage } from './NotFoundPage';
-import { NotificationsPage, SettingsPage } from './placeholderPages';
+import { SettingsPage } from './placeholderPages';
 
 const shell = (crumb: string): ShellRouteHandle => ({ crumb });
 

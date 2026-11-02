@@ -118,6 +118,7 @@ describe('private user rooms', () => {
       id: 'n1',
       type: 'roomStarted',
       roomId,
+      roomName: 'Late-night exam grind',
       text: 'Maya opened a room',
       read: false,
       createdAt: new Date().toISOString(),

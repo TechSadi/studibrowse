@@ -53,14 +53,25 @@ export interface SessionSummary {
   participants: number;
 }
 
+/**
+ * One notification, as the bell and notification:new show it. `text` is the headline ("Maya Kapoor opened a
+ * room"); `roomName` goes on the detail line. A grouped burst keeps its id and is sent again when it grows.
+ */
 export interface AppNotification {
   id: string;
   type: NotificationType;
   roomId: string;
+  roomName: string;
   text: string;
   read: boolean;
   /** ISO timestamp. */
   createdAt: string;
+}
+
+/** A notification in GET /api/notifications. */
+export interface NotificationListItem extends AppNotification {
+  /** The room is still open, so a room alert can offer Join. */
+  roomOpen: boolean;
 }
 
 /** The public room someone you follow is in, for the sidebar's live dot. Private rooms are never shown. */
