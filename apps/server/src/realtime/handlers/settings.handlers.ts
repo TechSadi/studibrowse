@@ -11,7 +11,7 @@ export function createSettingsHandlers(): HandlerRegistrar {
   return (io, socket) => {
     onEvent(io, socket, 'room:settings', async ({ roomId, ...data }, { userId }) => {
       requireHost(roomId, userId, socket, 'Only the host can change the room settings.');
-      const { settings, wasPublic, goals, goalsChanged } = await updateRoomSettings(
+      const { settings, wasPublic, goals, goalsChanged, timer } = await updateRoomSettings(
         roomId,
         userId,
         data,
@@ -20,6 +20,8 @@ export function createSettingsHandlers(): HandlerRegistrar {
       setMaxSize(roomId, settings.maxSize);
       io.to(roomChannel(roomId)).emit('room:update', { roomId, settings });
       if (goalsChanged) io.to(roomChannel(roomId)).emit('goal:update', { roomId, goals });
+      // A phase waiting for the host took the new length. It's paused, so there's nothing to schedule.
+      if (timer) io.to(roomChannel(roomId)).emit('timer:state', { roomId, timer, serverNow: Date.now() });
       if (wasPublic && !settings.isPublic) removeRoomCard(io, roomId);
       else broadcastRoomCard(io, roomId);
       // Going private (or public), or a new name, changes what everyone in it shows their followers.

@@ -54,6 +54,17 @@
   transform: translateY(-1px);
 }
 
+/* Not in the mockup: for actions that can't be undone (remove someone, close the room), like `.mini.danger`. */
+.danger {
+  border: 1px solid var(--danger);
+  background: var(--surface);
+  color: var(--danger);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
 .sm {
   height: 36px;
   padding: 0 13px;

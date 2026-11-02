@@ -58,6 +58,20 @@ describe('timerView', () => {
     expect(view.dots).toEqual(['done', 'done', 'done', 'done']);
   });
 
+  it('draws the ring against the length the running phase was given', () => {
+    // The host lengthened focus to 50 minutes mid-round: this round still runs its 25.
+    const longer = { ...settings, focusMins: 50 };
+    const view = timerView(timer({ round: 2 }), longer, 12.5 * 60_000, settings);
+    expect(view.remaining).toBe(0.5);
+    expect(view.clock).toBe('12:30');
+  });
+
+  it('never shows more rounds done than there are, after the host lowers the round count', () => {
+    const view = timerView(timer({ round: 3 }), { ...settings, totalRounds: 2 }, 60_000);
+    expect(view.detail).toBe('Round 3 of 3');
+    expect(view.dots).toEqual(['done', 'done', 'now']);
+  });
+
   it('shows the full focus length before the host starts', () => {
     const view = timerView(timer({ phase: 'idle', round: 0, endsAt: null }), settings, null);
     expect(view).toMatchObject({ label: 'Ready to start', clock: '25:00', remaining: 1, running: false });

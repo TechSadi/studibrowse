@@ -129,6 +129,36 @@
   font-weight: 500;
 }
 
+/* The host's actions on each row (mockup `.prow-actions` and `.mini`). */
+.actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.mini {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+
+.mini:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.mini:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mini.danger {
+  color: var(--danger);
+}
+
 .sdot {
   display: inline-block;
   width: 8px;

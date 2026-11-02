@@ -22,3 +22,10 @@ export const roomTooSmall = (memberCount: number) =>
     'ROOM_TOO_SMALL',
     `${memberCount} people are in the room, so it can’t hold fewer than ${memberCount}.`,
   );
+
+export const removedFromRoom = () =>
+  new AppError(403, 'REMOVED_FROM_ROOM', 'The host removed you from this room, so you can’t rejoin it.');
+
+export const memberNotFound = () => new AppError(404, 'MEMBER_NOT_FOUND', 'That person isn’t in the room.');
+
+export const cannotTargetSelf = (message: string) => new AppError(409, 'CANNOT_TARGET_SELF', message);

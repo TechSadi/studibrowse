@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { createApp } from './app';
 import { env } from './config/env';
 import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from './db/connect';
-import { startRoomCleanup } from './jobs/roomCleanup';
+import { purgeRoomContent, startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
 import { createStorageService } from './lib/storage';
 import { createNotificationSender } from './modules/notifications/notifications.service';
@@ -43,6 +43,8 @@ const notifications = createNotificationSender({
 const roomTimer = createRoomTimer({ onRoundEnded: notifications.roundEnded });
 const roomHandlers = createRoomHandlers({
   onDepart: roomTimer.memberLeaving,
+  onClosing: roomTimer.closing,
+  onClosed: (roomId) => purgeRoomContent(storage, [roomId]),
   onJoined: async (roomId, userId) => {
     await notifications.memberJoined(roomId, userId);
     await notifications.roomFull(roomId);

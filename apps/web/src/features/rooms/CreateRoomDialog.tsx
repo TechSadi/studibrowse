@@ -17,6 +17,7 @@ import {
   type TimerSettings,
 } from '@studibrowse/shared';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FormError, TextField } from '../../components/ui/Field';
 import { Icon } from '../../components/ui/Icon';
 import { Modal } from '../../components/ui/Modal';
@@ -211,6 +212,16 @@ export function CreateRoomDialog(props: CreateRoomDialogProps) {
   });
   const pending = create.isPending || save.isPending;
 
+  const [confirmClose, setConfirmClose] = useState(false);
+  // Everyone, this dialog included, moves on when room:closed arrives; the ack only matters if it fails.
+  const close = useMutation({
+    mutationFn: () => emitWithAck('room:close', { roomId: editing?.room.id ?? '' }),
+    onError: (error) => {
+      setConfirmClose(false);
+      setFormError(error.message);
+    },
+  });
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
@@ -231,7 +242,13 @@ export function CreateRoomDialog(props: CreateRoomDialogProps) {
 
   const footer = (
     <>
-      <span className={styles.summary}>Rooms close 5 minutes after the last person leaves.</span>
+      {editing ? (
+        <Button variant="danger" onClick={() => setConfirmClose(true)}>
+          Close room for everyone
+        </Button>
+      ) : (
+        <span className={styles.summary}>Rooms close 5 minutes after the last person leaves.</span>
+      )}
       <div className={styles.actions}>
         <Button variant="ghost" onClick={onClose}>
           Cancel
@@ -354,6 +371,20 @@ export function CreateRoomDialog(props: CreateRoomDialogProps) {
       </div>
       <GoalsField goals={draft.goals} onChange={(goals) => update({ goals })} />
       <FormError>{formError}</FormError>
+      {confirmClose ? (
+        <ConfirmDialog
+          title="Close this room for everyone?"
+          confirmLabel="Close room"
+          busyLabel="Closing…"
+          busy={close.isPending}
+          danger
+          onConfirm={() => close.mutate()}
+          onClose={() => setConfirmClose(false)}
+        >
+          Everyone’s focus time is saved and they’ll see their session summary. Chat, goals and files are
+          deleted. This can’t be undone.
+        </ConfirmDialog>
+      ) : null}
     </Modal>
   );
 }

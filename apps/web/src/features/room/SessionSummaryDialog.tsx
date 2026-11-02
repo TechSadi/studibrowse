@@ -18,6 +18,8 @@ interface SessionSummaryDialogProps {
   saved: boolean;
   onHome: () => void;
   onRejoin: () => void;
+  /** The host closed the room, rather than you leaving it. There's nothing to rejoin. */
+  closedByHost?: boolean;
 }
 
 const PENDING = '–';
@@ -33,6 +35,7 @@ export function SessionSummaryDialog({
   saved,
   onHome,
   onRejoin,
+  closedByHost = false,
 }: SessionSummaryDialogProps) {
   const titleId = useId();
   const subtitleId = useId();
@@ -64,7 +67,9 @@ export function SessionSummaryDialog({
         <Icon name="check" />
       </span>
       <h2 id={titleId}>Nice session, {firstName(userName)}</h2>
-      <p id={subtitleId}>You left {room.name}. Here’s what you got done.</p>
+      <p id={subtitleId}>
+        {closedByHost ? `The host closed ${room.name}.` : `You left ${room.name}.`} Here’s what you got done.
+      </p>
 
       {query.isError ? (
         <p className={styles.error} role="alert">
@@ -100,7 +105,7 @@ export function SessionSummaryDialog({
         <Button block onClick={onHome} data-autofocus>
           Back to home
         </Button>
-        {query.data?.roomOpen ? (
+        {query.data?.roomOpen && !closedByHost ? (
           <Button variant="ghost" block onClick={onRejoin}>
             Rejoin the room
           </Button>

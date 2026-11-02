@@ -38,7 +38,7 @@ const COPY: Record<Exclude<RoomScreenKind, 'error'>, ScreenCopy> = {
   removed: {
     icon: 'exit',
     title: 'You were removed from this room',
-    text: 'The host removed you from the room. You can join another room that’s live, or open your own.',
+    text: 'The host removed you, so you can’t rejoin this room. You can join another room that’s live, or open your own.',
   },
 };
 

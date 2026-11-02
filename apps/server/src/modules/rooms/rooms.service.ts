@@ -12,6 +12,7 @@ import {
   type RoomGoal,
   type RoomJoinData,
   type RoomSettingsUpdate,
+  type RoomTimer,
 } from '@studibrowse/shared';
 import {
   countMembers,
@@ -20,7 +21,7 @@ import {
   memberPreview,
   type MemberProfile,
 } from '../../realtime/presence';
-import { idleTimer } from '../../realtime/timer';
+import { idleTimer, retimeWaiting, type TimerState } from '../../realtime/timer';
 import { unauthenticated } from '../auth/auth.errors';
 import { toChatMessage, type MessageRecord } from '../chat/chat.serializer';
 import { Message } from '../chat/message.model';
@@ -29,13 +30,14 @@ import { toRoomResource, type ResourceRecord } from '../resources/resources.seri
 import { User } from '../users/user.model';
 import { generateInviteCode } from './inviteCode';
 import { Room } from './room.model';
-import { roomClosed, roomNotFound, roomTooSmall } from './rooms.errors';
+import { removedFromRoom, roomClosed, roomNotFound, roomTooSmall } from './rooms.errors';
 import {
   toClosedRoomPreview,
   toInvitePreview,
   toRoomDetail,
   toRoomGoal,
   toRoomSummary,
+  toRoomTimer,
   type HostRecord,
   type RoomRecord,
 } from './rooms.serializer';
@@ -238,6 +240,8 @@ export async function loadJoinableRoom(
   const room = await Room.findById(roomId).lean<RoomRecord>();
   if (!room) throw roomNotFound();
   if (room.closedAt) throw roomClosed();
+  // Holding the invite code doesn't help: the host's removal stands for as long as the room does.
+  if (room.removedUserIds?.some((id) => id.toString() === userId)) throw removedFromRoom();
   const allowed =
     room.isPublic ||
     room.hostId.toString() === userId ||
@@ -288,12 +292,31 @@ export async function setRoomHost(roomId: string, hostId: string): Promise<void>
   await Room.updateOne({ _id: roomId }, { hostId });
 }
 
+/** The host removed someone: they can't join this room again. */
+export async function banFromRoom(roomId: string, userId: string): Promise<void> {
+  await Room.updateOne({ _id: roomId }, { $addToSet: { removedUserIds: new Types.ObjectId(userId) } });
+}
+
+/**
+ * The host closed the room: sets closedAt and empties the goals, like the cleanup job. False if it was already
+ * closed. Log the run first, while the goals are still there to count.
+ */
+export async function closeRoomNow(roomId: string, at: Date): Promise<boolean> {
+  const { modifiedCount } = await Room.updateOne(
+    { _id: roomId, closedAt: null },
+    { closedAt: at, goals: [] },
+  );
+  return modifiedCount > 0;
+}
+
 export interface RoomSettingsResult {
   settings: RoomSettingsUpdate;
   /** Whether the room was public before this change, so the lobby can take down one that went private. */
   wasPublic: boolean;
   goals: RoomGoal[];
   goalsChanged: boolean;
+  /** Set when a phase waiting for the host took the new length, so the room needs a timer:state. */
+  timer: RoomTimer | null;
 }
 
 /**
@@ -334,5 +357,32 @@ export async function updateRoomSettings(
     timerSettings: data.timerSettings,
   };
   await Room.updateOne({ _id: roomId, closedAt: null }, { ...settings, goals });
-  return { settings, wasPublic: room.isPublic, goals: goals.map(toRoomGoal), goalsChanged };
+  const timer = await retimeWaitingPhase(roomId, room, data.timerSettings);
+  return { settings, wasPublic: room.isPublic, goals: goals.map(toRoomGoal), goalsChanged, timer };
+}
+
+/**
+ * A phase waiting for the host hasn't run yet, so it takes the new length. Only if the timer is still exactly
+ * as read: a timer command in the meantime wins.
+ */
+async function retimeWaitingPhase(
+  roomId: string,
+  room: RoomRecord,
+  next: CreateRoomData['timerSettings'],
+): Promise<RoomTimer | null> {
+  const current = room.timer as TimerState;
+  const retimed = retimeWaiting(current, room.timerSettings, next);
+  if (!retimed) return null;
+  const { modifiedCount } = await Room.updateOne(
+    {
+      _id: roomId,
+      closedAt: null,
+      'timer.phase': current.phase,
+      'timer.round': current.round,
+      'timer.endsAt': null,
+      'timer.pausedRemaining': current.pausedRemaining,
+    },
+    { 'timer.pausedRemaining': retimed.pausedRemaining },
+  );
+  return modifiedCount > 0 ? toRoomTimer(retimed) : null;
 }

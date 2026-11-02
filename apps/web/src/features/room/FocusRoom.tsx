@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PublicUser } from '@studibrowse/shared';
+import type { PresenceMember, PublicUser } from '@studibrowse/shared';
 import { PhoneHeader } from '../../components/layout/PhoneHeader';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useToast } from '../../components/ui/Toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSocketEvent } from '../../hooks/useSocket';
@@ -22,6 +23,8 @@ import { HostOnlyNote, TimerControls } from './TimerControls';
 import { TimerRing } from './TimerRing';
 import { TimerSettingsSummary } from './TimerSettingsSummary';
 import { timerTitle, timerView } from './timerView';
+import { useHostActions } from './useHostActions';
+import { usePhaseSettings } from './usePhaseSettings';
 import { useRoomTimer } from './useRoomTimer';
 import { useTimerSounds } from './useTimerSounds';
 
@@ -52,7 +55,8 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
   const hostName = host && host.userId !== user.id ? firstName(host.name) : null;
 
   const { timer, remainingMs } = useRoomTimer(room.id, snapshot);
-  const view = timerView(timer, room.timerSettings, remainingMs);
+  const phaseSettings = usePhaseSettings(timer, room.timerSettings);
+  const view = timerView(timer, room.timerSettings, remainingMs, phaseSettings);
   const { soundOn, toggleSound } = useTimerSounds(timer.phase);
 
   const title = timerTitle(view, room.name);
@@ -90,6 +94,21 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
     }
     wasRejoining.current = rejoining;
   }, [rejoining, toast]);
+
+  // ---- Host controls ----
+  const hostActions = useHostActions(room.id);
+  const [removing, setRemoving] = useState<PresenceMember | null>(null);
+  const wasHost = useRef(isHost);
+  useEffect(() => {
+    if (!wasHost.current && isHost) {
+      toast({
+        icon: 'crown',
+        title: 'You’re the host now',
+        detail: 'You control the timer and room settings.',
+      });
+    }
+    wasHost.current = isHost;
+  }, [isHost, toast]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const code = room.inviteCode ?? inviteCode;
@@ -153,7 +172,16 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
               />
             ),
             goals: <GoalsPanel roomGoals={roomGoals} members={members} myUserId={user.id} isHost={isHost} />,
-            people: <PeoplePanel members={members} myUserId={user.id} />,
+            people: (
+              <PeoplePanel
+                members={members}
+                myUserId={user.id}
+                isHost={isHost}
+                busy={hostActions.busy}
+                onMakeHost={(member) => void hostActions.makeHost(member)}
+                onRemove={setRemoving}
+              />
+            ),
             files: (
               <FilesPanel
                 resources={resources}
@@ -183,6 +211,19 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
           memberCount={members.length}
           onClose={() => setSettingsOpen(false)}
         />
+      ) : null}
+      {removing && isHost ? (
+        <ConfirmDialog
+          title={`Remove ${firstName(removing.name)} from the room?`}
+          confirmLabel="Remove"
+          busyLabel="Removing…"
+          busy={hostActions.busy}
+          danger
+          onConfirm={() => void hostActions.remove(removing).then(() => setRemoving(null))}
+          onClose={() => setRemoving(null)}
+        >
+          They won’t be able to rejoin this room.
+        </ConfirmDialog>
       ) : null}
     </>
   );

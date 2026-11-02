@@ -42,16 +42,22 @@ export async function closeEmptyRooms(
     { closedAt: now, goals: [] },
   );
   const closed = await Room.find({ _id: { $in: ids }, closedAt: now }, { _id: 1 }).lean();
-  const closedIds = closed.map((room) => room._id);
+  const closedIds = closed.map((room) => room._id.toString());
+  await purgeRoomContent(storage, closedIds);
+  return closedIds;
+}
+
+/**
+ * Deletes what a closed room held: its chat, its resources and its stored files. Used by the cleanup job and
+ * when the host closes a room. Session logs are never touched.
+ */
+export async function purgeRoomContent(storage: StorageService, roomIds: string[]): Promise<void> {
+  if (roomIds.length === 0) return;
   await Promise.all([
-    Message.deleteMany({ roomId: { $in: closedIds } }),
-    Resource.deleteMany({ roomId: { $in: closedIds } }),
-    deleteStoredFiles(
-      storage,
-      closedIds.map((id) => id.toString()),
-    ),
+    Message.deleteMany({ roomId: { $in: roomIds } }),
+    Resource.deleteMany({ roomId: { $in: roomIds } }),
+    deleteStoredFiles(storage, roomIds),
   ]);
-  return closedIds.map((id) => id.toString());
 }
 
 async function finalizeRuns(

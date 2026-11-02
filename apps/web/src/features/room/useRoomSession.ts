@@ -20,8 +20,8 @@ export interface RoomSession {
 /**
  * Being in a room: joins when the socket connects and joins again after every reconnect (Socket.IO doesn't
  * rejoin rooms by itself; inside the server's reconnect window you keep your place). Follows presence, room
- * settings, goals, shared files and removal. Unmounting leaves the room, unless you already left or the room
- * had ended for you.
+ * settings, goals, shared files, removal and the host closing the room. Unmounting leaves the room, unless you
+ * already left or the room had ended for you.
  */
 export function useRoomSession(roomId: string, inviteCode: string | undefined): RoomSession {
   const { socket } = useSocket();
@@ -88,6 +88,9 @@ export function useRoomSession(roomId: string, inviteCode: string | undefined): 
   });
   useSocketEvent('room:removed', (payload) => {
     if (payload.roomId === roomId) dispatch({ type: 'removed' });
+  });
+  useSocketEvent('room:closed', (payload) => {
+    if (payload.roomId === roomId) dispatch({ type: 'closed' });
   });
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);

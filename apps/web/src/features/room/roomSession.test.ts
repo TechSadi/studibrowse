@@ -59,6 +59,7 @@ describe('roomSessionReducer', () => {
     expect(fail('ROOM_FULL')).toEqual({ status: 'full' });
     expect(fail('ROOM_CLOSED')).toEqual({ status: 'closed' });
     expect(fail('ROOM_NOT_FOUND')).toEqual({ status: 'notFound' });
+    expect(fail('REMOVED_FROM_ROOM')).toEqual({ status: 'removed' });
     expect(fail('INTERNAL_ERROR')).toEqual({ status: 'error', message: 'Nope.' });
   });
 
@@ -145,6 +146,20 @@ describe('roomSessionReducer', () => {
 
     state = roomSessionReducer(state, { type: 'resourceRemoved', resourceId: 'r1' });
     expect(state).toMatchObject({ joined: { resources: [{ id: 'r2' }] } });
+  });
+
+  it('keeps the room for the summary when the host closes it, and never rejoins it', () => {
+    const closed = roomSessionReducer(joined, { type: 'closed' });
+    expect(closed).toMatchObject({ status: 'closedByHost', joined: { room, joinedAt: 1000 } });
+    expect(isEnded(closed)).toBe(true);
+    expect(roomSessionReducer(closed, { type: 'rejoin' })).toBe(closed);
+    expect(roomSessionReducer(closed, { type: 'presence', members: [] })).toBe(closed);
+
+    const closedAfterLeave = roomSessionReducer(roomSessionReducer(joined, { type: 'left' }), {
+      type: 'closed',
+    });
+    expect(closedAfterLeave).toMatchObject({ status: 'closedByHost' });
+    expect(roomSessionReducer(initialRoomSession, { type: 'closed' })).toBe(initialRoomSession);
   });
 
   it('ignores room updates before joining', () => {

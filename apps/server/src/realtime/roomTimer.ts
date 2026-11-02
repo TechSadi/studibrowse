@@ -47,6 +47,12 @@ export interface RoomTimer {
   memberLeaving: (roomId: string, userId: string, at: Date) => Promise<void>;
   /** The room is closing with a run still going: logs it as it stands, ending at `endedAt`. */
   finalizeOnClose: (roomId: string, endedAt: Date) => Promise<void>;
+  /**
+   * The host is closing the room at `at`: stops its timer and logs a run still going, crediting everyone's focus
+   * so far. Call it before the room is marked closed (the goals are still there to count) and before anyone is
+   * taken out of presence.
+   */
+  closing: (roomId: string, at: Date) => Promise<void>;
   /** Schedules every running timer from the database, catching up on phases that ended while we were down. */
   restore: (io: TypedServer) => Promise<void>;
   /** Cancels every scheduled timeout, for shutdown and tests. */
@@ -235,13 +241,23 @@ export function createRoomTimer({ now = () => new Date(), onRoundEnded }: RoomTi
     });
   }
 
+  async function logRunAsItStands(roomId: string, endedAt: Date): Promise<void> {
+    const room = await loadTimerRoom(roomId);
+    const run = mergeFocusCredits(room.run, drainFocus(roomId, endedAt), endedAt);
+    if (!isRunActive(run)) return;
+    await finalizeSession(roomId, run, endedAt);
+    await saveRun(roomId, emptyRun());
+  }
+
   async function finalizeOnClose(roomId: string, endedAt: Date): Promise<void> {
+    await withRoom(roomId, () => logRunAsItStands(roomId, endedAt));
+  }
+
+  async function closing(roomId: string, at: Date): Promise<void> {
     await withRoom(roomId, async () => {
-      const room = await loadTimerRoom(roomId);
-      const run = mergeFocusCredits(room.run, drainFocus(roomId, endedAt), endedAt);
-      if (!isRunActive(run)) return;
-      await finalizeSession(roomId, run, endedAt);
-      await saveRun(roomId, emptyRun());
+      cancel(roomId);
+      setFocusRunning(roomId, false, at);
+      await logRunAsItStands(roomId, at);
     });
   }
 
@@ -254,5 +270,5 @@ export function createRoomTimer({ now = () => new Date(), onRoundEnded }: RoomTi
     timeouts.clear();
   }
 
-  return { command, memberLeaving, finalizeOnClose, restore, dispose };
+  return { command, memberLeaving, finalizeOnClose, closing, restore, dispose };
 }

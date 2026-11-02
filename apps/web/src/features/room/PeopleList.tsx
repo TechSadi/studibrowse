@@ -52,8 +52,24 @@ export function PeopleList({ members, myUserId }: PeopleProps) {
   );
 }
 
-/** The People tab of the side panel (mockup `#peopleList`). Host actions arrive with Phase 4. */
-export function PeoplePanel({ members, myUserId }: PeopleProps) {
+interface PeoplePanelProps extends PeopleProps {
+  /** You're the host: every row but yours gets Make host and Remove. */
+  isHost: boolean;
+  /** A host action is on its way to the server; the buttons wait for it. */
+  busy?: boolean;
+  onMakeHost: (member: PresenceMember) => void;
+  onRemove: (member: PresenceMember) => void;
+}
+
+/** The People tab of the side panel (mockup `#peopleList`), with the host's actions on each row. */
+export function PeoplePanel({
+  members,
+  myUserId,
+  isHost,
+  busy = false,
+  onMakeHost,
+  onRemove,
+}: PeoplePanelProps) {
   const now = useNow(60_000);
   return (
     <ul className={styles.rows}>
@@ -71,6 +87,28 @@ export function PeoplePanel({ members, myUserId }: PeopleProps) {
               {statusLine(member, now)}
             </small>
           </div>
+          {isHost && member.userId !== myUserId ? (
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.mini}
+                disabled={busy}
+                aria-label={`Make ${member.name} the host`}
+                onClick={() => onMakeHost(member)}
+              >
+                Make host
+              </button>
+              <button
+                type="button"
+                className={`${styles.mini} ${styles.danger}`}
+                disabled={busy}
+                aria-label={`Remove ${member.name} from the room`}
+                onClick={() => onRemove(member)}
+              >
+                Remove
+              </button>
+            </div>
+          ) : null}
         </li>
       ))}
     </ul>

@@ -3,8 +3,8 @@ import type { RoomDetail } from '@studibrowse/shared';
 import { signUpPerson, type Person } from './fixtures/realAccounts';
 
 /**
- * Three people in one room against the real server and Socket.IO: presence, the shared timer, chat and the
- * host hand-over. No fixed waits: every check is a web-first assertion or expect polling.
+ * Three people in one room against the real server and Socket.IO: presence, the shared timer, chat, the
+ * host hand-over and the host controls. No fixed waits: every check is a web-first assertion or expect polling.
  */
 
 const FOCUS_SECONDS = 25 * 60;
@@ -115,7 +115,8 @@ test.describe('A shared room', () => {
     for (const guest of [jonah, priya]) {
       await expect(peopleInRoom(guest.page)).toHaveCount(2);
     }
-    await expect(jonah.page.getByText('You’re the host')).toBeVisible();
+    await expect(jonah.page.getByText('You’re the host', { exact: true })).toBeVisible();
+    await expect(jonah.page.getByText('You’re the host now')).toBeVisible();
     // The timer kept running through the hand-over, and Jonah now has the controls.
     await expect(jonah.page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
     await expect(priya.page.getByText(`Hosted by ${jonah.firstName}`)).toBeVisible();
@@ -123,6 +124,65 @@ test.describe('A shared room', () => {
       priya.page.getByText(`${jonah.firstName} is the host and controls the timer.`),
     ).toBeVisible();
     await expect(priya.page.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);
+  });
+
+  test('the host hands over the role, the new host removes someone and closes the room', async ({
+    browser,
+    baseURL,
+  }) => {
+    test.slow();
+    people = await Promise.all(
+      ['Maya Kapoor', 'Jonah Diaz', 'Priya Shah'].map((name) => signUpPerson(browser, baseURL!, name)),
+    );
+    const [host, jonah, priya] = people as [Person, Person, Person];
+
+    await host.page.goto('/home?create=1');
+    await host.page.getByLabel('Room name').fill('Host controls room');
+    const created = host.page.waitForResponse(
+      (res) => res.request().method() === 'POST' && new URL(res.url()).pathname === '/api/rooms',
+    );
+    await host.page.getByRole('button', { name: 'Create and open' }).click();
+    const { room } = (await (await created).json()) as { room: RoomDetail };
+    for (const guest of [jonah, priya]) {
+      await guest.page.goto(`/r/${room.inviteCode}`);
+      await expect(guest.page.getByRole('heading', { level: 1, name: 'Host controls room' })).toBeVisible();
+    }
+    for (const person of people) await expect(peopleInRoom(person.page)).toHaveCount(3);
+
+    // ---- Make host: Jonah gets the controls, Maya loses them ----
+    await host.page.getByRole('tab', { name: /People/ }).click();
+    await host.page.getByRole('button', { name: `Make ${jonah.name} the host` }).click();
+    await expect(jonah.page.getByText('You’re the host now')).toBeVisible();
+    await expect(jonah.page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
+    await expect(host.page.getByRole('button', { name: 'Start', exact: true })).toHaveCount(0);
+    await expect(host.page.getByRole('button', { name: /Make .* the host/ })).toHaveCount(0);
+
+    // ---- Remove: Priya sees the removed screen and can't come back with the link ----
+    await jonah.page.getByRole('tab', { name: /People/ }).click();
+    await jonah.page.getByRole('button', { name: `Remove ${priya.name} from the room` }).click();
+    await jonah.page
+      .getByRole('dialog', { name: `Remove ${priya.firstName} from the room?` })
+      .getByRole('button', { name: 'Remove' })
+      .click();
+    await expect(priya.page.getByRole('heading', { name: 'You were removed from this room' })).toBeVisible();
+    for (const person of [host, jonah]) await expect(peopleInRoom(person.page)).toHaveCount(2);
+    await priya.page.goto(`/room/${room.id}?invite=${room.inviteCode}`);
+    await expect(priya.page.getByRole('heading', { name: 'You were removed from this room' })).toBeVisible();
+
+    // ---- Close: everyone left sees their summary, without Rejoin ----
+    await jonah.page.getByRole('button', { name: 'Settings' }).click();
+    await jonah.page.getByRole('button', { name: 'Close room for everyone' }).click();
+    await jonah.page
+      .getByRole('dialog', { name: 'Close this room for everyone?' })
+      .getByRole('button', { name: 'Close room' })
+      .click();
+    for (const person of [host, jonah]) {
+      const summary = person.page.getByRole('dialog', { name: `Nice session, ${person.firstName}` });
+      await expect(summary.getByText('The host closed Host controls room.', { exact: false })).toBeVisible();
+      await expect(summary.getByRole('button', { name: 'Rejoin the room' })).toHaveCount(0);
+    }
+    await priya.page.goto(`/r/${room.inviteCode}`);
+    await expect(priya.page.getByRole('heading', { level: 1, name: 'This room has closed' })).toBeVisible();
   });
 
   test('someone you follow lights up in your sidebar while they are in a public room', async ({

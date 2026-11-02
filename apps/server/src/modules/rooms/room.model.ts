@@ -89,7 +89,9 @@ const roomSchema = new Schema(
     totalFocusMins: { type: Number, required: true, default: 0 },
     /** Set while nobody is connected. The cleanup job deletes the room once the grace period passes. */
     emptySince: { type: Date, default: null },
-    /** Set when the host closes the room. A closed room is never live. */
+    /** People the host removed. They can't join this room again. Internal: never serialised. */
+    removedUserIds: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
+    /** Set when the host closes the room, or the cleanup job closes it once empty. A closed room is never live. */
     closedAt: { type: Date, default: null },
   },
   { timestamps: true },

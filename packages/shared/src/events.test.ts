@@ -20,6 +20,7 @@ import {
   lobbyUnsubscribeSchema,
   resourceAddSchema,
   resourceRemoveSchema,
+  roomCloseSchema,
   roomJoinSchema,
   roomSettingsUpdateSchema,
   statusSetSchema,
@@ -47,6 +48,7 @@ describe('clientEventSchemas', () => {
         'member:remove',
         'resource:add',
         'resource:remove',
+        'room:close',
         'room:join',
         'room:leave',
         'room:settings',
@@ -103,6 +105,11 @@ describe('room id payloads', () => {
   it('checks user ids too', () => {
     expect(hostTransferSchema.safeParse({ roomId, userId }).success).toBe(true);
     expect(hostTransferSchema.safeParse({ roomId, userId: '123' }).success).toBe(false);
+  });
+
+  it('takes only the room id on room:close', () => {
+    expect(roomCloseSchema.parse({ roomId })).toEqual({ roomId });
+    expect(roomCloseSchema.safeParse({ roomId, userId }).success).toBe(false);
   });
 });
 

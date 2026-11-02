@@ -29,6 +29,8 @@ export interface RoomRecord {
   totalSessions: number;
   totalFocusMins: number;
   closedAt: Date | null;
+  /** Internal: never serialised. Missing on rooms saved before it was added. */
+  removedUserIds?: Types.ObjectId[];
   createdAt: Date;
 }
 
