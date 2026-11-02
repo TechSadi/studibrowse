@@ -15,6 +15,7 @@ import type { LobbyRoomCard, RoomDetail, RoomGoal, RoomTimer, TimerSettings } fr
 import type {
   AppNotification,
   ChatMessage,
+  FollowLive,
   PresenceMember,
   RoomResource,
   SessionSummary,
@@ -125,6 +126,12 @@ export const memberRemoveSchema = hostTransferSchema;
 export const lobbySubscribeSchema = z.strictObject({});
 export const lobbyUnsubscribeSchema = lobbySubscribeSchema;
 
+/**
+ * Watch the people you follow: which public room each is in now, then follows:live whenever that changes. Send it
+ * again after following or unfollowing someone. The server reads who you follow itself. No fields.
+ */
+export const followsWatchSchema = z.strictObject({});
+
 // ---- Event maps ----
 
 type WithAck<Schema extends z.ZodType, Data> = (payload: z.input<Schema>, ack: AckCallback<Data>) => void;
@@ -178,6 +185,8 @@ export interface ClientToServerEvents {
   'member:remove': WithAck<typeof memberRemoveSchema, EmptyData>;
   'lobby:subscribe': WithAck<typeof lobbySubscribeSchema, EmptyData>;
   'lobby:unsubscribe': WithAck<typeof lobbyUnsubscribeSchema, EmptyData>;
+  /** `live` has an entry for each person you follow, with `room: null` when they're not in a public room. */
+  'follows:watch': WithAck<typeof followsWatchSchema, { live: FollowLive[] }>;
 }
 
 export interface ServerToClientEvents {
@@ -202,6 +211,8 @@ export interface ServerToClientEvents {
   'rooms:upsert': (payload: { room: LobbyRoomCard }) => void;
   /** To the lobby: a room closed or went private. */
   'rooms:remove': (payload: { roomId: string }) => void;
+  /** To the people watching this person (follows:watch): they entered, left or changed public room. */
+  'follows:live': (payload: FollowLive) => void;
 }
 
 /** What the server stores on each socket after the handshake. */
@@ -230,6 +241,7 @@ export const clientEventSchemas = {
   'member:remove': memberRemoveSchema,
   'lobby:subscribe': lobbySubscribeSchema,
   'lobby:unsubscribe': lobbyUnsubscribeSchema,
+  'follows:watch': followsWatchSchema,
 } as const satisfies Record<keyof ClientToServerEvents, z.ZodType>;
 
 export type ClientEventName = keyof ClientToServerEvents;

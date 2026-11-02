@@ -8,11 +8,12 @@ import { SignupPage } from '../features/auth/SignupPage';
 import { HomePage } from '../features/home/HomePage';
 import { InvitePage } from '../features/invite/InvitePage';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
+import { ProfilePage } from '../features/profile/ProfilePage';
 import { ProgressPage } from '../features/progress/ProgressPage';
 import { RoomPage } from '../features/room/RoomPage';
 import { WelcomePage } from '../features/welcome/WelcomePage';
 import { NotFoundPage } from './NotFoundPage';
-import { NotificationsPage, ProfilePage, SettingsPage } from './placeholderPages';
+import { NotificationsPage, SettingsPage } from './placeholderPages';
 
 const shell = (crumb: string): ShellRouteHandle => ({ crumb });
 

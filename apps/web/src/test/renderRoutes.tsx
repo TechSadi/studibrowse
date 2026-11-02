@@ -29,6 +29,7 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     following: [],
     notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
+    privacy: { showStudying: true, showStats: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',
     createdAt: '2026-09-01T10:00:00.000Z',
     ...overrides,

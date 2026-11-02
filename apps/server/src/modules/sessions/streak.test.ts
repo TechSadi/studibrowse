@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localDayNumber, nextStreak, resolveTimeZone, type StreakState } from './streak';
+import { displayedStreak, localDayNumber, nextStreak, resolveTimeZone, type StreakState } from './streak';
 
 const fresh: StreakState = { current: 0, longest: 0, lastStudiedAt: null };
 const utc = (iso: string) => new Date(`${iso}Z`);
@@ -107,5 +107,27 @@ describe('nextStreak', () => {
       expect(state).toMatchObject({ current: 2 });
       expect(nextStreak(state, nextDay, 'America/New_York')).toMatchObject({ current: 3 });
     });
+  });
+});
+
+describe('displayedStreak', () => {
+  const now = new Date('2026-11-04T12:00:00Z');
+
+  it('shows the streak when they studied today or yesterday', () => {
+    expect(displayedStreak(5, new Date('2026-11-04T08:00:00Z'), 'UTC', now)).toBe(5);
+    expect(displayedStreak(5, new Date('2026-11-03T23:00:00Z'), 'UTC', now)).toBe(5);
+  });
+
+  it('shows 0 once a day has been missed', () => {
+    expect(displayedStreak(5, new Date('2026-11-02T23:59:00Z'), 'UTC', now)).toBe(0);
+  });
+
+  it('shows 0 before the first session', () => {
+    expect(displayedStreak(0, null, 'UTC', now)).toBe(0);
+  });
+
+  it('counts days in their time zone', () => {
+    // 2 Nov 23:30 in UTC is already 3 Nov in Tokyo, which is yesterday there.
+    expect(displayedStreak(3, new Date('2026-11-02T23:30:00Z'), 'Asia/Tokyo', now)).toBe(3);
   });
 });

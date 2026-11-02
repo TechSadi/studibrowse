@@ -26,6 +26,7 @@ const baseUser: PublicUser = {
   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   following: [],
   notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
+  privacy: { showStudying: true, showStats: true },
   onboardedAt: null,
   createdAt: '2026-10-01T10:00:00.000Z',
 };

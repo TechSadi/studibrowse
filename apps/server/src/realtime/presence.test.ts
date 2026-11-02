@@ -16,6 +16,7 @@ import {
   removeSocket,
   resetPresence,
   roomsOfSocket,
+  roomsOfUser,
   setFocusRunning,
   setHost,
   setStatus,
@@ -338,5 +339,21 @@ describe('memberPreview', () => {
       { name: 'alex', avatarColor: 'green' },
     ]);
     expect(memberPreview('room-2', 4)).toEqual([]);
+  });
+});
+
+describe('roomsOfUser', () => {
+  it('lists every room someone is in, and keeps them through their reconnect window', () => {
+    join('room-1', 'maya', 's1');
+    join('room-2', 'maya', 's2');
+    join('room-2', 'alex', 's3');
+    expect(roomsOfUser('maya').sort()).toEqual(['room-1', 'room-2']);
+
+    removeSocket('room-1', 'maya', 's1');
+    expect(roomsOfUser('maya').sort()).toEqual(['room-1', 'room-2']);
+
+    removeMember('room-1', 'maya');
+    expect(roomsOfUser('maya')).toEqual(['room-2']);
+    expect(roomsOfUser('sam')).toEqual([]);
   });
 });

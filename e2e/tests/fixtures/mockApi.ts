@@ -3,6 +3,7 @@ import type {
   ApiErrorBody,
   AuthResponse,
   FollowedUser,
+  FollowListUser,
   InvitePreviewResponse,
   MySession,
   ProgressSummaryResponse,
@@ -10,6 +11,7 @@ import type {
   RoomDetail,
   RoomSummary,
   SuggestedUser,
+  UserProfile,
 } from '@studibrowse/shared';
 
 /**
@@ -45,6 +47,7 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     timeZone: 'UTC',
     following: [],
     notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
+    privacy: { showStudying: true, showStats: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',
     createdAt: '2026-09-01T10:00:00.000Z',
     ...overrides,
@@ -124,6 +127,12 @@ export class MockApi {
   progress: ProgressSummaryResponse = makeProgress();
   /** GET /api/sessions/mine, newest first. The cursor is the index of the next session. */
   mySessions: MySession[] = [];
+  /** GET /api/users/:username answers 404 for anyone not here. */
+  profiles: Record<string, UserProfile> = {};
+  /** GET /api/users/:username/followers and /following, by `${username}/${kind}`. The cursor is an index. */
+  followLists: Record<string, FollowListUser[]> = {};
+  /** Rows per page of a follow list. */
+  followPageSize = 20;
 
   addAccount(user: PublicUser, password: string) {
     this.accounts.push({ user, password });
@@ -303,6 +312,26 @@ export class MockApi {
           return room
             ? { status: 200, json: { room } }
             : error(404, 'ROOM_NOT_FOUND', 'We couldn’t find that room. Check the link and try again.');
+        }
+        const listMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/(followers|following)$/);
+        if (listMatch && method === 'GET') {
+          const people = this.followLists[`${listMatch[1]}/${listMatch[2]}`];
+          if (!this.profiles[listMatch[1]!])
+            return error(404, 'USER_NOT_FOUND', 'We couldn’t find that person.');
+          const start = Number(url.searchParams.get('cursor') ?? 0);
+          const end = start + this.followPageSize;
+          const all = people ?? [];
+          return {
+            status: 200,
+            json: { users: all.slice(start, end), nextCursor: end < all.length ? String(end) : null },
+          };
+        }
+        const profileName = url.pathname.match(/^\/api\/users\/([a-z0-9_]+)$/)?.[1];
+        if (profileName && method === 'GET') {
+          const profile = this.profiles[profileName];
+          return profile
+            ? { status: 200, json: { profile } }
+            : error(404, 'USER_NOT_FOUND', 'We couldn’t find that person.');
         }
         const followId = url.pathname.match(/^\/api\/users\/([^/]+)\/follow$/)?.[1];
         if (followId && method === 'POST') {

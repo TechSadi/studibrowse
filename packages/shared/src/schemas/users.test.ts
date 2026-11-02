@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { updateMeSchema, userIdParamsSchema } from './users';
+import { followListQuerySchema, updateMeSchema, userIdParamsSchema, usernameParamsSchema } from './users';
 
 describe('updateMeSchema', () => {
   it('accepts every onboarding field', () => {
@@ -29,6 +29,12 @@ describe('updateMeSchema', () => {
     expect(updateMeSchema.parse({ timeZone: 'UTC' })).toEqual({ timeZone: 'UTC' });
   });
 
+  it('accepts part of the privacy settings', () => {
+    expect(updateMeSchema.parse({ privacy: { showStats: false } })).toEqual({
+      privacy: { showStats: false },
+    });
+  });
+
   it('trims and de-duplicates subjects', () => {
     expect(updateMeSchema.parse({ subjects: [' Maths', 'Maths ', 'Law'] }).subjects).toEqual([
       'Maths',
@@ -51,6 +57,8 @@ describe('updateMeSchema', () => {
     ['more than 12 rounds', { timerDefaults: { totalRounds: 13 } }],
     ['an unknown timer field', { timerDefaults: { autoStart: true } }],
     ['onboarded: false', { onboarded: false }],
+    ['an unknown privacy setting', { privacy: { showEmail: true } }],
+    ['a non-boolean privacy setting', { privacy: { showStats: 'no' } }],
     ['fields with their own flow', { email: 'new@example.com' }],
     ['a raw onboardedAt', { onboardedAt: '2026-01-01T00:00:00Z' }],
   ])('rejects %s', (_, body) => {
@@ -65,5 +73,29 @@ describe('userIdParamsSchema', () => {
 
   it.each(['me', '123', '6650f0c2a1b2c3d4e5f6071z'])('rejects %j', (id) => {
     expect(userIdParamsSchema.safeParse({ id }).success).toBe(false);
+  });
+});
+
+describe('usernameParamsSchema', () => {
+  it('lowercases the username', () => {
+    expect(usernameParamsSchema.parse({ username: 'MayaK' })).toEqual({ username: 'mayak' });
+  });
+
+  it.each(['ab', 'has space', 'x'.repeat(21)])('rejects %j', (username) => {
+    expect(usernameParamsSchema.safeParse({ username }).success).toBe(false);
+  });
+});
+
+describe('followListQuerySchema', () => {
+  it('defaults the page size', () => {
+    expect(followListQuerySchema.parse({})).toEqual({ limit: 20 });
+  });
+
+  it('coerces the limit from the query string', () => {
+    expect(followListQuerySchema.parse({ limit: '5', cursor: 'abc' })).toEqual({ limit: 5, cursor: 'abc' });
+  });
+
+  it.each(['0', '21', '2.5'])('rejects a limit of %s', (limit) => {
+    expect(followListQuerySchema.safeParse({ limit }).success).toBe(false);
   });
 });

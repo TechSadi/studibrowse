@@ -127,6 +127,11 @@ export const TIMER_LIMITS = {
 /** How many people onboarding suggests following. */
 export const SUGGESTED_USERS_LIMIT = 5;
 
+/** Rows per page of a profile's Followers and Following lists, and the most one request returns. */
+export const FOLLOW_LIST_PAGE_SIZE = 20;
+/** A profile's Recent rooms. */
+export const PROFILE_RECENT_ROOMS = 5;
+
 /** How long a password reset link works. The Forgot password screen quotes it. */
 export const RESET_TOKEN_TTL_MINS = 30;
 

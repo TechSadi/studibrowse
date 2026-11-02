@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import type { FollowedUser } from '@studibrowse/shared';
+import type { FollowedUser, FollowLiveRoom } from '@studibrowse/shared';
+import { useFollowLive } from '../../features/follows/useFollowLive';
 import { usersApi } from '../../lib/api';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import { Avatar } from '../ui/Avatar';
@@ -8,20 +9,26 @@ import styles from './FollowingList.module.css';
 
 interface FollowRowProps {
   person: FollowedUser;
-  /** Hosting or in a room right now. */
-  live?: boolean;
+  /** The public room they're in right now, if any. */
+  live?: FollowLiveRoom | undefined;
 }
 
 function FollowRow({ person, live }: FollowRowProps) {
+  // Live: a click joins their room, as in the mockup. Otherwise it opens their profile.
+  const title = live ? `${live.isHost ? 'Hosting' : 'Studying in'} ${live.name}. Click to join.` : undefined;
   return (
     <li>
-      <Link to={`/u/${person.username}`} className={styles.follow}>
+      <Link
+        to={live ? `/room/${live.id}` : `/u/${person.username}`}
+        className={styles.follow}
+        {...(title ? { title } : {})}
+      >
         <span className={styles.avatar}>
           <Avatar initials={initialsOf(person.name)} tone={avatarTone(person.avatarColor)} size="sm" />
           {live ? <i className={styles.onDot} aria-hidden="true" /> : null}
         </span>
         <b>{person.name}</b>
-        {live ? <span className="sr-only">, studying now</span> : null}
+        {live ? <span className="sr-only">, {title}</span> : null}
       </Link>
     </li>
   );
@@ -32,9 +39,10 @@ export function FollowingList({ following }: { following: string[] }) {
   // The ids are in the key, so following or unfollowing someone refetches the names.
   const query = useQuery({
     queryKey: ['following', following],
-    queryFn: () => usersApi.following(),
+    queryFn: () => usersApi.myFollowing(),
     enabled: following.length > 0,
   });
+  const live = useFollowLive(following);
 
   if (following.length === 0) {
     return <p className={styles.note}>Follow people to see when they&apos;re studying.</p>;
@@ -69,9 +77,8 @@ export function FollowingList({ following }: { following: string[] }) {
 
   return (
     <ul className={styles.list}>
-      {/* Live dots arrive with rooms and presence. */}
       {query.data.users.map((person) => (
-        <FollowRow key={person.id} person={person} />
+        <FollowRow key={person.id} person={person} live={live.get(person.id)} />
       ))}
     </ul>
   );

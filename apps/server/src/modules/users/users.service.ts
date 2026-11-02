@@ -21,11 +21,14 @@ export async function updateMe(userId: string, data: UpdateMeData): Promise<Publ
   // The token outlived the account, which is the same as not being signed in.
   if (!user) throw unauthenticated();
 
-  const { timerDefaults, onboarded, ...fields } = data;
+  const { timerDefaults, privacy, onboarded, ...fields } = data;
   user.set(fields);
   // Merge per field, so saving the focus length doesn't reset the breaks.
   for (const [field, value] of Object.entries(timerDefaults ?? {})) {
     user.set(`timerDefaults.${field}`, value);
+  }
+  for (const [field, value] of Object.entries(privacy ?? {})) {
+    user.set(`privacy.${field}`, value);
   }
   // Keep the first timestamp: skipping and later finishing is still one onboarding.
   if (onboarded && !user.onboardedAt) user.onboardedAt = new Date();

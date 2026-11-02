@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AVATAR_COLORS,
+  FOLLOW_LIST_PAGE_SIZE,
   MAX_SUBJECTS,
   STUDYING_MAX,
   SUBJECT_MAX,
@@ -9,6 +10,7 @@ import {
   WEEKLY_GOAL_MAX_MINS,
   WEEKLY_GOAL_MIN_MINS,
 } from '../constants';
+import { usernameSchema } from './auth';
 
 type TimerField = keyof typeof TIMER_LIMITS;
 
@@ -56,6 +58,14 @@ export const timeZoneSchema = z
   .max(TIME_ZONE_MAX, 'That time zone is not recognised.')
   .refine(isValidTimeZone, 'That time zone is not recognised.');
 
+/** What other people can see on your profile. Settings › Privacy. */
+export const privacySchema = z.strictObject({
+  /** Your "what are you studying" line on your profile and in people lists. */
+  showStudying: z.boolean(),
+  /** Hours, streak and rooms hosted on your profile. */
+  showStats: z.boolean(),
+});
+
 /**
  * PATCH /api/users/me. Every field is optional, but the body can't be empty. Strict, so fields that need
  * their own flow (email, username, password) can't be changed through it.
@@ -72,6 +82,7 @@ export const updateMeSchema = z
       .max(WEEKLY_GOAL_MAX_MINS, `Weekly goals can be at most ${WEEKLY_GOAL_MAX_MINS / 60} hours.`),
     timerDefaults: timerDefaultsSchema.partial(),
     timeZone: timeZoneSchema,
+    privacy: privacySchema.partial(),
     /** Finishes (or skips) onboarding. The server sets onboardedAt the first time only. */
     onboarded: z.literal(true),
   })
@@ -82,6 +93,25 @@ export const userIdParamsSchema = z.object({
   id: z.string().regex(/^[a-f0-9]{24}$/i, 'That user id is not valid.'),
 });
 
+/** GET /api/users/:username and its follower lists. */
+export const usernameParamsSchema = z.object({ username: usernameSchema });
+
+/**
+ * GET /api/users/:username/followers and /following. `cursor` is the opaque `nextCursor` of the page before.
+ */
+export const followListQuerySchema = z.object({
+  cursor: z.string().min(1).max(200).optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, 'That page size is not valid.')
+    .max(FOLLOW_LIST_PAGE_SIZE, 'That page size is not valid.')
+    .default(FOLLOW_LIST_PAGE_SIZE),
+});
+
 export type UpdateMeInput = z.input<typeof updateMeSchema>;
 export type UpdateMeData = z.output<typeof updateMeSchema>;
 export type UserIdParams = z.output<typeof userIdParamsSchema>;
+export type UsernameParams = z.output<typeof usernameParamsSchema>;
+export type FollowListQuery = z.output<typeof followListQuerySchema>;
+export type PrivacySettings = z.output<typeof privacySchema>;

@@ -62,3 +62,17 @@ export interface AppNotification {
   /** ISO timestamp. */
   createdAt: string;
 }
+
+/** The public room someone you follow is in, for the sidebar's live dot. Private rooms are never shown. */
+export interface FollowLiveRoom {
+  id: string;
+  name: string;
+  /** They're hosting it ("Hosting …") rather than studying in it. */
+  isHost: boolean;
+}
+
+/** Whether someone you follow is in a public room right now. */
+export interface FollowLive {
+  userId: string;
+  room: FollowLiveRoom | null;
+}

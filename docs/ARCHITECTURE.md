@@ -79,11 +79,14 @@ Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails 
 | `POST /api/auth/reset` | Sets a new password from a reset link and signs the account out everywhere (204) (shared `resetPasswordSchema`) | 400 `RESET_TOKEN_INVALID` (unknown, used or expired) |
 | `POST /api/auth/google` | Verifies a Google ID token, then signs in, links or creates the account. Sets the cookie, returns `{ accessToken, user }`: 201 for a new account, 200 otherwise (shared `googleAuthSchema`) | 401 `GOOGLE_TOKEN_INVALID`, 409 `GOOGLE_ACCOUNT_CONFLICT`, 503 `GOOGLE_NOT_CONFIGURED` |
 | `GET /api/users/username-available?u=` | `{ available }`, for the live check on Sign up | 400 `VALIDATION_ERROR` |
-| `PATCH /api/users/me` | Updates your own profile and settings (shared `updateMeSchema`: `avatarColor`, `studying`, `subjects`, `weeklyGoalMins`, `timerDefaults` merged per field, `timeZone` (an IANA zone `Intl` knows, such as `Europe/London`, or `UTC`), and `onboarded: true`, which sets `onboardedAt` the first time only). Strict: unknown fields such as `email` are rejected. Returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
+| `PATCH /api/users/me` | Updates your own profile and settings (shared `updateMeSchema`: `avatarColor`, `studying`, `subjects`, `weeklyGoalMins`, `timerDefaults` merged per field, `timeZone` (an IANA zone `Intl` knows, such as `Europe/London`, or `UTC`), `privacy` (`showStudying`, `showStats`) merged per field, and `onboarded: true`, which sets `onboardedAt` the first time only). Strict: unknown fields such as `email` are rejected. Returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
 | `GET /api/users/me/following` | `{ users }`: the people you follow, in the order you followed them, for the sidebar. Each is a `FollowedUser` (`toFollowedUser()`: id, name, username, avatarColor). Deleted accounts are left out | 401 |
 | `GET /api/users/suggestions` | `{ users }`: up to 5 people for onboarding's Follow step, the most recently active first (`lastStudiedAt`, then `updatedAt`). Only people who finished onboarding, never you. Each is a `SuggestedUser` (`toSuggestedUser()`: no email or settings) | 401 |
 | `POST /api/users/:id/follow` | Adds the person to your `following` (idempotent), returns `{ user }` | 400 `VALIDATION_ERROR` (bad id), 400 `CANNOT_FOLLOW_SELF`, 404 `USER_NOT_FOUND`, 401 |
 | `DELETE /api/users/:id/follow` | Removes the person from your `following` (idempotent, also for deleted accounts), returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
+| `GET /api/users/:username` | `{ profile }`: someone's profile as you see it (`UserProfile`, see Profiles below). Registered after the fixed `/api/users/*` paths, so `/suggestions` and `/me/following` still match those | 400 `VALIDATION_ERROR` (bad username), 404 `USER_NOT_FOUND` (unknown, or hasn't finished onboarding), 401 |
+| `GET /api/users/:username/followers?cursor=&limit=` | `{ users, nextCursor }`: the people who follow them, newest accounts first, 20 a page (shared `followListQuerySchema`). Each is a `FollowListUser` (`toFollowListUser()`: id, name, username, avatarColor, `studying` unless hidden, `isFollowing` for you) | 400 `VALIDATION_ERROR` (bad cursor), 404 `USER_NOT_FOUND`, 401 |
+| `GET /api/users/:username/following?cursor=&limit=` | Same shape: the people they follow, the most recently followed first. Deleted accounts are left out, so a page can come back short | 400 `VALIDATION_ERROR`, 404 `USER_NOT_FOUND`, 401 |
 
 Rate limits (`middleware/rateLimit.ts`, in memory):
 
@@ -161,7 +164,7 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 
 ## Lobby: the live room list
 
-Pages that list public rooms (Home now, Profile later) join the Socket.IO room `lobby` with `lobby:subscribe` and leave with `lobby:unsubscribe`. Events are in `docs/SOCKET-EVENTS.md` › Lobby.
+Pages that list public rooms (Home, and Profile for its Hosting now card) join the Socket.IO room `lobby` with `lobby:subscribe` and leave with `lobby:unsubscribe`. Events are in `docs/SOCKET-EVENTS.md` › Lobby.
 
 - **Server:** `realtime/lobby.ts` holds `broadcastRoomCard(io, roomId)`, the one way a card reaches the lobby. It is called on every change a card shows:
   - the room created (`POST /api/rooms`, through `createApp`'s `onRoomCreated`)
@@ -236,6 +239,20 @@ Indexes: `{ participants.userId, startedAt: -1 }` for weeks and the summary, `{ 
 - **Streak:** `current` is 0 unless `lastStudiedAt` is today or yesterday in your zone (streaks only change when a session is logged, so the stored number can be stale). The web client no longer guesses this with the browser's zone.
 - **Web** (`features/progress/`): `queries.ts` holds `useProgressSummary()` (one query, key `['progress', 'summary', 'week']`, shared by the sidebar, Home and Progress) and `useMySessions(cursor, limit)` (Home asks for `RECENT_SESSIONS_COUNT`, Progress pages with Newer/Older, keeping a stack of visited cursors). The session summary dialog calls `invalidateProgress` once it loads, so everything refreshes after a session. `FocusByDayChart.tsx` draws the bars as SVG at the container's measured width (`hooks/useElementWidth.ts`), as one `role="img"` with a `<desc>` listing every day. Day keys from the server are formatted in UTC so the browser's zone can't shift them (`format.ts`).
 - Tests: `progress.service.test.ts` (zones, the DST change, distinct people and rooms, streak), `progress.test.ts`, history paging in `modules/sessions/sessions.test.ts`, and `e2e/tests/progress.spec.ts`.
+
+## Profiles and following (`modules/users/`, web `features/profile/`, `features/follows/`)
+
+- **Following** is the `following` array on each user; followers are found with `User.find({ following: id })` (indexed). There is no separate follows collection.
+- **Privacy** (`user.privacy`, Settings › Privacy, not built yet): `showStudying` hides your "what are you studying" line from profiles, suggestions and people lists; `showStats` hides the profile's three stats. Both default to true. Your own profile always shows you everything.
+- **`GET /api/users/:username`** (`profile.service.ts`) builds a `UserProfile`:
+  - follower and following counts (deleted accounts don't count), `isFollowing`, `isMe`, `joinedAt` (`createdAt`).
+  - `stats` (null when hidden): focus minutes this calendar month in their time zone (a Session aggregate), the current streak (`displayedStreak()` in `sessions/streak.ts`, 0 once lapsed, shared with Progress) and rooms hosted (`Room.countDocuments({ hostId })`).
+  - `hostingNow`: the newest open room they host that someone is in, as a `RoomSummary`, **only if it is public, or you are its host or in it**.
+  - `recentRooms`: their latest sessions, one row per room, up to 5. A room that is private now is only listed for people who were in that session (and for themselves).
+  - `studiedTogether`: different rooms you both focused in (null on your own profile).
+- **Web:** `ProfilePage` (mockup `#profile`) loads `['people', 'profile', username]`. The follower and following counts open `FollowListModal`, a `useInfiniteQuery` with Show more. Share uses `navigator.share` where there is one, otherwise copies `<origin>/u/:username` and shows "Profile link copied". The page holds the lobby and reloads itself on a `rooms:upsert` for a room this person hosts, a `rooms:remove` for its Hosting now room, or a `follows:live` about them.
+- **Follow buttons** (profile, followers lists, onboarding, Room closed) all use `features/follows/useFollowToggle.ts`: it calls the follow endpoint, swaps in the returned user with `setUser`, reloads everything under `['people']`, and shows the "Following" toast.
+- **Live dots** in the sidebar's People you follow: `features/follows/useFollowLive.ts` sends `follows:watch` on every connect and whenever `user.following` changes, then applies `follows:live`. A live person's row links to their room ("Hosting … Click to join."), otherwise to their profile. Only **public** rooms light the dot (see `docs/SOCKET-EVENTS.md` › Following).
 
 ## Room lifecycle
 

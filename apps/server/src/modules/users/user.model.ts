@@ -43,6 +43,15 @@ const notificationPrefsSchema = new Schema(
   { _id: false },
 );
 
+// Settings › Privacy: what other people see on your profile and in people lists.
+const privacySchema = new Schema(
+  {
+    showStudying: { type: Boolean, required: true, default: true },
+    showStats: { type: Boolean, required: true, default: true },
+  },
+  { _id: false },
+);
+
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: NAME_MAX },
@@ -67,6 +76,7 @@ const userSchema = new Schema(
     timeZone: { type: String, required: true, default: DEFAULT_TIME_ZONE },
     following: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
     notificationPrefs: { type: notificationPrefsSchema, required: true, default: () => ({}) },
+    privacy: { type: privacySchema, required: true, default: () => ({}) },
     onboardedAt: { type: Date, default: null },
   },
   { timestamps: true },

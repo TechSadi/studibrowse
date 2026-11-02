@@ -5,6 +5,7 @@ import type { AuthResponse } from '@studibrowse/shared';
 export interface Person {
   name: string;
   firstName: string;
+  username: string;
   context: BrowserContext;
   page: Page;
 }
@@ -31,5 +32,5 @@ export async function signUpPerson(browser: Browser, baseURL: string, name: stri
   });
   expect(onboard.status(), await onboard.text()).toBe(200);
 
-  return { name, firstName, context, page: await context.newPage() };
+  return { name, firstName, username, context, page: await context.newPage() };
 }

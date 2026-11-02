@@ -1,4 +1,3 @@
-import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import type { ClosedRoomPreview } from '@studibrowse/shared';
 import { SoloCard } from '../../components/layout/SoloScreen';
@@ -7,9 +6,9 @@ import { ButtonLink } from '../../components/ui/Button';
 import { FormError } from '../../components/ui/Field';
 import { FollowButton } from '../../components/ui/FollowButton';
 import { Icon } from '../../components/ui/Icon';
-import { usersApi } from '../../lib/api';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import { useAuth } from '../auth/AuthContext';
+import { useFollowToggle } from '../follows/useFollowToggle';
 import { CREATE_ROOM_PATH } from '../home/useCreateRoomDialog';
 import styles from './Invite.module.css';
 import { authPathFor, roomsPerWeekText } from './invitePreview';
@@ -21,20 +20,16 @@ interface RoomClosedCardProps {
 
 /** An invite link to a room that has ended (mockup `#closed`): follow the host, or find another room. */
 export function RoomClosedCard({ room, code }: RoomClosedCardProps) {
-  const { state, setUser } = useAuth();
+  const { state } = useAuth();
   const navigate = useNavigate();
   const me = state.user;
   const following = me?.following.includes(room.host.id) ?? false;
-  const toggle = useMutation({
-    mutationFn: (follow: boolean) =>
-      follow ? usersApi.follow(room.host.id) : usersApi.unfollow(room.host.id),
-    onSuccess: ({ user }) => setUser(user),
-  });
+  const { toggle, isBusy, error } = useFollowToggle();
 
   function onToggle() {
     // Following needs an account; sign up and come back here.
     if (!me) navigate(authPathFor('signup', code));
-    else toggle.mutate(!following);
+    else toggle(room.host.id, !following);
   }
 
   return (
@@ -59,13 +54,13 @@ export function RoomClosedCard({ room, code }: RoomClosedCardProps) {
           <FollowButton
             name={room.host.name}
             following={following}
-            disabled={toggle.isPending}
+            disabled={isBusy(room.host.id)}
             onToggle={onToggle}
           />
         )}
       </div>
       <div className={styles.error}>
-        <FormError>{toggle.error?.message}</FormError>
+        <FormError>{error?.message}</FormError>
       </div>
       <div className={styles.actions}>
         <ButtonLink block to="/home">

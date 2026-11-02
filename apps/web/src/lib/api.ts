@@ -4,6 +4,7 @@ import type {
   CreateRoomInput,
   CreateRoomResponse,
   FollowingResponse,
+  FollowListResponse,
   ForgotPasswordInput,
   ForgotPasswordResponse,
   GoogleAuthInput,
@@ -12,6 +13,7 @@ import type {
   LoginInput,
   MeResponse,
   MySessionsResponse,
+  ProfileResponse,
   ProgressSummaryResponse,
   PublicRoomsQuery,
   PublicRoomsResponse,
@@ -178,7 +180,16 @@ export const usersApi = {
     ),
   updateMe: (input: UpdateMeInput) =>
     request<MeResponse>('PATCH', '/api/users/me', { body: input, auth: true }),
-  following: () => request<FollowingResponse>('GET', '/api/users/me/following', { auth: true }),
+  myFollowing: () => request<FollowingResponse>('GET', '/api/users/me/following', { auth: true }),
+  profile: (username: string) =>
+    request<ProfileResponse>('GET', `/api/users/${encodeURIComponent(username)}`, { auth: true }),
+  /** A profile's Followers or Following list. `cursor` is the previous page's nextCursor. */
+  followList: (username: string, kind: 'followers' | 'following', cursor?: string) =>
+    request<FollowListResponse>(
+      'GET',
+      `/api/users/${encodeURIComponent(username)}/${kind}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+      { auth: true },
+    ),
   suggestions: () => request<SuggestionsResponse>('GET', '/api/users/suggestions', { auth: true }),
   follow: (userId: string) =>
     request<MeResponse>('POST', `/api/users/${encodeURIComponent(userId)}/follow`, { auth: true }),

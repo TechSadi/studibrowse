@@ -1,7 +1,8 @@
 import { updateRoomSettings } from '../../modules/rooms/rooms.service';
+import { broadcastFollowLive } from '../followPresence';
 import { onEvent } from '../handler';
 import { broadcastRoomCard, removeRoomCard } from '../lobby';
-import { countMembers, setMaxSize } from '../presence';
+import { countMembers, listMembers, setMaxSize } from '../presence';
 import { roomChannel, type HandlerRegistrar } from '../types';
 import { requireHost } from './room.handlers';
 
@@ -21,6 +22,11 @@ export function createSettingsHandlers(): HandlerRegistrar {
       if (goalsChanged) io.to(roomChannel(roomId)).emit('goal:update', { roomId, goals });
       if (wasPublic && !settings.isPublic) removeRoomCard(io, roomId);
       else broadcastRoomCard(io, roomId);
+      // Going private (or public), or a new name, changes what everyone in it shows their followers.
+      broadcastFollowLive(
+        io,
+        listMembers(roomId).map((member) => member.userId),
+      );
       return {};
     });
   };

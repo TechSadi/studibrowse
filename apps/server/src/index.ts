@@ -7,6 +7,7 @@ import { startRoomCleanup } from './jobs/roomCleanup';
 import { logger } from './lib/logger';
 import { createStorageService } from './lib/storage';
 import { createChatHandlers } from './realtime/handlers/chat.handlers';
+import { createFollowHandlers } from './realtime/handlers/follow.handlers';
 import { createGoalHandlers } from './realtime/handlers/goal.handlers';
 import { createLobbyHandlers } from './realtime/handlers/lobby.handlers';
 import { createResourceHandlers } from './realtime/handlers/resource.handlers';
@@ -40,6 +41,7 @@ const io = createIo(httpServer, {
     createResourceHandlers(storage),
     createSettingsHandlers(),
     createLobbyHandlers(),
+    createFollowHandlers(),
   ],
 });
 

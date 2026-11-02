@@ -160,6 +160,16 @@ export async function loadRoomCard(roomId: string): Promise<RoomCardState> {
   return { kind: 'listed', card };
 }
 
+/** The rooms among `roomIds` that are open and public, for followers' live dots. */
+export async function findOpenPublicRooms(roomIds: string[]): Promise<{ id: string; name: string }[]> {
+  if (roomIds.length === 0) return [];
+  const rooms = await Room.find(
+    { _id: { $in: roomIds }, isPublic: true, closedAt: null },
+    { name: 1 },
+  ).lean();
+  return rooms.map((room) => ({ id: room._id.toString(), name: room.name }));
+}
+
 /** A private room is visible to its host and to the people in it. */
 export async function getRoom(userId: string, roomId: string): Promise<RoomDetail> {
   const room = await Room.findById(roomId).lean<RoomRecord>();

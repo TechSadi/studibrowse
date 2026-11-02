@@ -36,6 +36,7 @@ export interface PublicUser {
   /** Ids of the people this user follows. */
   following: string[];
   notificationPrefs: NotificationPrefs;
+  privacy: PrivacyPrefs;
   /** ISO timestamp, or null until onboarding is finished. */
   onboardedAt: string | null;
   createdAt: string;
@@ -55,6 +56,14 @@ export interface NotificationPrefs {
   roomFull: boolean;
   memberJoined: boolean;
   roundEnded: boolean;
+}
+
+/** Settings › Privacy: what other people see. Your own profile always shows everything to you. */
+export interface PrivacyPrefs {
+  /** Your "what are you studying" line on your profile and in people lists. */
+  showStudying: boolean;
+  /** Hours, streak and rooms hosted on your profile. */
+  showStats: boolean;
 }
 
 export interface AuthResponse {
@@ -100,6 +109,21 @@ export interface FollowedUser {
 
 export interface FollowingResponse {
   users: FollowedUser[];
+}
+
+/** Someone in a profile's Followers or Following list. */
+export interface FollowListUser extends FollowedUser {
+  /** Empty when not set or hidden by their privacy settings. */
+  studying: string;
+  /** You follow them. */
+  isFollowing: boolean;
+}
+
+/** GET /api/users/:username/followers and /following, newest first. */
+export interface FollowListResponse {
+  users: FollowListUser[];
+  /** Pass as `cursor` for the next page; null on the last page. */
+  nextCursor: string | null;
 }
 
 export interface TimerSettings extends TimerDefaults {
@@ -205,6 +229,62 @@ export interface RoomResponse {
 }
 
 export type CreateRoomResponse = RoomResponse;
+
+/** A room on a profile's Recent rooms: one of their latest sessions, one row per room. */
+export interface ProfileRecentRoom {
+  roomId: string;
+  name: string;
+  /** ISO timestamp of the session's start. */
+  startedAt: string;
+  /** They hosted the room, or joined someone else's. */
+  role: 'hosted' | 'joined';
+  /** The host's first name when they joined someone else's room, otherwise null. */
+  hostName: string | null;
+  /** Everyone who focused in the session, them included. */
+  people: number;
+  /** Their own focus minutes in it. */
+  focusedMins: number;
+  /** The session is still running. */
+  inProgress: boolean;
+}
+
+/** Hours, streak and rooms hosted. */
+export interface ProfileStats {
+  /** Their focus minutes this calendar month, in their time zone. */
+  focusMinsThisMonth: number;
+  /** 0 once the streak has lapsed. */
+  streak: number;
+  roomsHosted: number;
+}
+
+/** GET /api/users/:username: another person (or you) as the profile shows them. */
+export interface UserProfile {
+  id: string;
+  name: string;
+  username: string;
+  avatarColor: AvatarColor;
+  /** Empty when not set or hidden by their privacy settings. */
+  studying: string;
+  subjects: string[];
+  /** ISO timestamp the account was created. */
+  joinedAt: string;
+  followerCount: number;
+  followingCount: number;
+  /** You follow them. Always false on your own profile. */
+  isFollowing: boolean;
+  isMe: boolean;
+  /** Null when their privacy settings hide it (never on your own profile). */
+  stats: ProfileStats | null;
+  /** The live room they host, when it's public or you're in it; otherwise null. */
+  hostingNow: RoomSummary | null;
+  recentRooms: ProfileRecentRoom[];
+  /** Different rooms you've both focused in. Null on your own profile. */
+  studiedTogether: number | null;
+}
+
+export interface ProfileResponse {
+  profile: UserProfile;
+}
 
 export interface PublicRoomsResponse {
   rooms: RoomSummary[];

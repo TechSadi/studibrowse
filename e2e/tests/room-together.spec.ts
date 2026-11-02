@@ -124,4 +124,40 @@ test.describe('A shared room', () => {
     ).toBeVisible();
     await expect(priya.page.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);
   });
+
+  test('someone you follow lights up in your sidebar while they are in a public room', async ({
+    browser,
+    baseURL,
+  }) => {
+    test.slow();
+    people = await Promise.all(
+      ['Maya Kapoor', 'Jonah Diaz'].map((name) => signUpPerson(browser, baseURL!, name)),
+    );
+    const [host, fan] = people as [Person, Person];
+
+    // ---- Jonah follows Maya from her profile ----
+    await fan.page.goto(`/u/${host.username}`);
+    await expect(fan.page.getByRole('heading', { level: 1, name: host.name })).toBeVisible();
+    await fan.page.getByRole('button', { name: `Follow ${host.name}` }).click();
+    const sidebarLink = fan.page
+      .getByRole('complementary', { name: 'Sidebar' })
+      .getByRole('link', { name: new RegExp(host.name) });
+    await expect(sidebarLink).toHaveAttribute('href', `/u/${host.username}`);
+
+    // ---- Maya opens a public room: the dot appears without a reload ----
+    await host.page.goto('/home?create=1');
+    await host.page.getByLabel('Room name').fill('Followed focus room');
+    await host.page.getByRole('button', { name: 'Create and open' }).click();
+    await expect(host.page.getByText('You’re the host')).toBeVisible();
+    const roomPath = new URL(host.page.url()).pathname;
+    await expect(sidebarLink).toHaveAttribute('href', roomPath);
+    await expect(sidebarLink).toHaveAttribute('title', 'Hosting Followed focus room. Click to join.');
+
+    // ---- Her profile shows the room with Join ----
+    await expect(fan.page.getByRole('region', { name: 'Hosting now' })).toContainText('Followed focus room');
+
+    // ---- She leaves: the dot goes ----
+    await host.page.getByRole('button', { name: 'Leave', exact: true }).click();
+    await expect(sidebarLink).toHaveAttribute('href', `/u/${host.username}`);
+  });
 });

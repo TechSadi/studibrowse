@@ -60,6 +60,8 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 | `lobby:unsubscribe` | client → server | `{}` | Any signed-in user | Ack data: `{}`. The socket leaves `lobby` |
 | `rooms:upsert` | server → `lobby` | `{ room: { id, name, subject, host: { id, name, username, avatarColor }, isPublic, maxSize, memberCount, isLive, timer: { phase, round, endsAt, pausedRemaining }, timerSettings, createdAt } }`, a `LobbyRoomCard` (the `RoomSummary` of `GET /api/rooms/public` without `hostFollowed`, which each client works out from who it follows). `isLive` is `memberCount > 0` | Server only. A public, open room was created or its card changed. At most one per room per second | n/a. Clients add the room, or update it in place |
 | `rooms:remove` | server → `lobby` | `{ roomId }` | Server only. A public room closed, or its host made it private | n/a. Clients drop the card |
+| `follows:watch` | client → server | `{}` | Any signed-in user | Ack data: `{ live: [{ userId, room: { id, name, isHost } \| null }] }`, one entry per person you follow. The socket now watches exactly the people you follow (read from the database, not the client) and gets `follows:live` about them. Sent on every connect and after following or unfollowing someone |
+| `follows:live` | server → `watch:<userId>` | `{ userId, room: { id, name, isHost } \| null }` | Server only. Someone you follow joined or left a room, a room they're in changed name or went public or private, or they became its host | n/a. The sidebar shows or clears their live dot |
 | `notification:new` | server → `user:<id>` | `{ notification: { id, type, roomId, text, read, createdAt } }`, where `type` is `roomStarted`, `roomFull`, `memberJoined` or `roundEnded` | Server only | n/a. Also saved to `notifications` |
 
 **Timer commands.** Every `timer:*` command checks, in order, that this socket joined the room (`NOT_A_MEMBER`) and that the sender is the room's current host (`NOT_HOST`), on every call. Then `ROOM_CLOSED` if the room has closed, and `INVALID_TIMER_COMMAND` if the command doesn't fit the timer (for example `timer:pause` while idle). A refused command changes nothing and sends no `timer:state`. When the phase changes, everyone's status follows it (focus → Focusing, anything else → Break; Away is left alone) and the room gets `presence:update` before `timer:state`. Clients draw the countdown as `endsAt - (Date.now() + clockOffset)`, where `clockOffset = serverNow - Date.now()` when the state arrived; the server never sends ticks.
@@ -86,6 +88,16 @@ Each send reads the room at that moment and sends `rooms:upsert` for an open pub
 Bursts are coalesced: **at most one `rooms:upsert` per room per second**. The first change is sent straight away; later changes inside that second become one send at the end of it, carrying the card as it is then.
 
 The lobby isn't kept across a reconnect (the server sees a new socket), so the web client sends `lobby:subscribe` again on every connect and refetches the list once (`GET /api/rooms/public`) to pick up anything it missed while offline.
+
+## Following
+
+Each socket that sent `follows:watch` is in a Socket.IO room `watch:<userId>` for every person its user follows. `realtime/followPresence.ts` sends `follows:live` there when that person's public-room presence may have changed:
+
+- they join a room for the first time (`room:join`, not another tab), or leave it for good (`room:leave`, or the reconnect window running out);
+- the host leaves and someone else becomes host (sent for both people);
+- the host saves Room settings (sent for everyone in the room, so a name change or going private reaches their followers).
+
+Each send reads presence and the database at that moment and reports the first **open public** room the person is in, or `room: null`. A private room is reported as `null`, so **following someone never reveals a private room**. Sends for one person are queued, so a quick join then leave can't arrive out of order. Like the lobby, watching isn't kept across a reconnect; the client watches again on every connect.
 
 ## Not covered by the spec yet
 

@@ -15,6 +15,7 @@ import {
   goalRemoveSchema,
   goalToggleSchema,
   hostTransferSchema,
+  followsWatchSchema,
   lobbySubscribeSchema,
   lobbyUnsubscribeSchema,
   resourceAddSchema,
@@ -36,6 +37,7 @@ describe('clientEventSchemas', () => {
       [
         'chat:send',
         'chat:typing',
+        'follows:watch',
         'goal:add',
         'goal:remove',
         'goal:toggle',
@@ -67,6 +69,7 @@ describe('clientEventSchemas', () => {
 describe.each([
   ['lobby:subscribe', lobbySubscribeSchema],
   ['lobby:unsubscribe', lobbyUnsubscribeSchema],
+  ['follows:watch', followsWatchSchema],
 ])('%s', (_event, schema) => {
   it('takes an empty payload', () => {
     expect(schema.parse({})).toEqual({});
