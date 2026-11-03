@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { SuggestedUser } from '@studibrowse/shared';
 import { Avatar } from '../../components/ui/Avatar';
 import { Button } from '../../components/ui/Button';
@@ -7,6 +7,7 @@ import { FollowButton } from '../../components/ui/FollowButton';
 import { usersApi } from '../../lib/api';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import { useAuth } from '../auth/AuthContext';
+import { useFollowToggle } from '../follows/useFollowToggle';
 import styles from './Onboarding.module.css';
 
 export const SUGGESTIONS_QUERY_KEY = ['users', 'suggestions'] as const;
@@ -16,14 +17,10 @@ function subtitleOf(person: SuggestedUser): string {
 }
 
 export function FollowStep() {
-  const { state, setUser } = useAuth();
+  const { state } = useAuth();
   const following = state.user?.following ?? [];
   const suggestions = useQuery({ queryKey: SUGGESTIONS_QUERY_KEY, queryFn: usersApi.suggestions });
-  const toggle = useMutation({
-    mutationFn: ({ id, follow }: { id: string; follow: boolean }) =>
-      follow ? usersApi.follow(id) : usersApi.unfollow(id),
-    onSuccess: ({ user }) => setUser(user),
-  });
+  const { toggle, isBusy, error } = useFollowToggle();
 
   if (suggestions.isPending) {
     return (
@@ -67,7 +64,6 @@ export function FollowStep() {
       <ul className={styles.suggest}>
         {suggestions.data.users.map((person) => {
           const isFollowing = following.includes(person.id);
-          const busy = toggle.isPending && toggle.variables.id === person.id;
           return (
             <li key={person.id} className={styles.sug}>
               <Avatar initials={initialsOf(person.name)} tone={avatarTone(person.avatarColor)} />
@@ -78,14 +74,14 @@ export function FollowStep() {
               <FollowButton
                 name={person.name}
                 following={isFollowing}
-                disabled={busy}
-                onToggle={() => toggle.mutate({ id: person.id, follow: !isFollowing })}
+                disabled={isBusy(person.id)}
+                onToggle={() => toggle(person.id, !isFollowing)}
               />
             </li>
           );
         })}
       </ul>
-      <FormError>{toggle.error?.message}</FormError>
+      <FormError>{error?.message}</FormError>
     </>
   );
 }

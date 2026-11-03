@@ -1,7 +1,16 @@
 import { RECONNECT_GRACE_MS, type MemberStatus } from '@studibrowse/shared';
 import { logger } from '../../lib/logger';
-import { notAMember, notHost, roomFull } from '../../modules/rooms/rooms.errors';
 import {
+  cannotTargetSelf,
+  memberNotFound,
+  notAMember,
+  notHost,
+  roomClosed,
+  roomFull,
+} from '../../modules/rooms/rooms.errors';
+import {
+  banFromRoom,
+  closeRoomNow,
   getRoomSnapshot,
   loadJoinableRoom,
   loadMemberProfile,
@@ -10,6 +19,7 @@ import {
   setRoomHost,
 } from '../../modules/rooms/rooms.service';
 import { broadcastPresence } from '../broadcast';
+import { broadcastFollowLive } from '../followPresence';
 import { onEvent } from '../handler';
 import { broadcastRoomCard } from '../lobby';
 import {
@@ -27,7 +37,7 @@ import {
   setHost,
   setStatus,
 } from '../presence';
-import { roomChannel, type HandlerRegistrar, type TypedServer, type TypedSocket } from '../types';
+import { roomChannel, userRoom, type HandlerRegistrar, type TypedServer, type TypedSocket } from '../types';
 
 export interface RoomHandlerOptions {
   /** How long someone whose last tab dropped keeps their place. Tests shorten it. */
@@ -37,6 +47,18 @@ export interface RoomHandlerOptions {
    * saved (the room timer's memberLeaving). A failure is logged and doesn't stop them leaving.
    */
   onDepart?: (roomId: string, userId: string, at: Date) => Promise<void>;
+  /**
+   * Runs after someone new is in the room (not another tab of someone already here), for notifications. It
+   * doesn't hold up their join, and a failure is logged.
+   */
+  onJoined?: (roomId: string, userId: string) => Promise<void>;
+  /**
+   * Runs when the host closes the room, before it is marked closed and before anyone is taken out of presence,
+   * so the run can be logged with everyone's focus time (the room timer's closing).
+   */
+  onClosing?: (roomId: string, at: Date) => Promise<void>;
+  /** Runs after the host closed the room and everyone is out, to delete its chat and files. A failure is logged. */
+  onClosed?: (roomId: string) => Promise<void>;
   /** The clock. Tests share one with the room timer. */
   now?: () => Date;
 }
@@ -47,10 +69,16 @@ export interface RoomHandlers {
   dispose: () => void;
 }
 
-/** room:join, room:leave, status:set, and what a dropped connection does to presence. */
+/**
+ * room:join, room:leave, status:set, what a dropped connection does to presence, and the host controls that
+ * change who is in the room: member:remove, host:transfer and room:close.
+ */
 export function createRoomHandlers({
   reconnectGraceMs = RECONNECT_GRACE_MS,
   onDepart,
+  onJoined,
+  onClosing,
+  onClosed,
   now = () => new Date(),
 }: RoomHandlerOptions = {}): RoomHandlers {
   const pendingDepartures = new Map<string, NodeJS.Timeout>();
@@ -62,15 +90,19 @@ export function createRoomHandlers({
     pendingDepartures.delete(key);
   }
 
-  /** Someone left for good: by room:leave, or when the reconnect window ran out. */
-  async function depart(io: TypedServer, roomId: string, userId: string): Promise<void> {
+  /**
+   * Takes someone out of the room for good: saves their focus time, removes them, hands the host role on if
+   * they held it, and tells the room, the lobby and their followers. `force` (the host removing them) takes
+   * them out even if a tab of theirs is still connected.
+   */
+  async function evict(io: TypedServer, roomId: string, userId: string, force: boolean): Promise<void> {
     cancelDeparture(roomId, userId);
     if (!isMember(roomId, userId)) return;
     await onDepart?.(roomId, userId, now()).catch((err: unknown) =>
       logger.error({ err, roomId, userId }, 'failed to save focus time for someone leaving'),
     );
     // They may have come back in another tab while their focus time was saved; then they stay.
-    if (memberSocketCount(roomId, userId) > 0) return;
+    if (!force && memberSocketCount(roomId, userId) > 0) return;
     const wasHost = getHostId(roomId) === userId;
     if (!removeMember(roomId, userId)) return;
     const nextHost = wasHost ? longestPresentMember(roomId) : null;
@@ -79,6 +111,12 @@ export function createRoomHandlers({
     if (nextHost) await setRoomHost(roomId, nextHost);
     // After the new host is saved, so the card shows them.
     broadcastRoomCard(io, roomId);
+    broadcastFollowLive(io, nextHost ? [userId, nextHost] : [userId]);
+  }
+
+  /** Someone left for good: by room:leave, or when the reconnect window ran out. */
+  function depart(io: TypedServer, roomId: string, userId: string): Promise<void> {
+    return evict(io, roomId, userId, false);
   }
 
   /** One socket is out of the room. If it was the last one anywhere, the grace period starts. */
@@ -111,7 +149,13 @@ export function createRoomHandlers({
       const snapshot = await getRoomSnapshot(joinable, userId);
       broadcastPresence(io, roomId);
       // Another tab of someone already here doesn't change the card.
-      if (outcome === 'joined') broadcastRoomCard(io, roomId);
+      if (outcome === 'joined') {
+        broadcastRoomCard(io, roomId);
+        broadcastFollowLive(io, [userId]);
+        onJoined?.(roomId, userId).catch((err: unknown) =>
+          logger.error({ err, roomId, userId }, 'failed to notify about someone joining'),
+        );
+      }
       return { ...snapshot, members: listMembers(roomId), serverNow: now().getTime() };
     });
 
@@ -128,6 +172,53 @@ export function createRoomHandlers({
       requireSocketInRoom(roomId, socket);
       setStatus(roomId, userId, { status, workingOn }, now());
       broadcastPresence(io, roomId);
+      return {};
+    });
+
+    onEvent(io, socket, 'member:remove', async ({ roomId, userId: target }, { userId }) => {
+      requireHost(roomId, userId, socket, 'Only the host can remove people.');
+      if (target === userId) throw cannotTargetSelf('You can’t remove yourself. Use Leave instead.');
+      if (!isMember(roomId, target)) throw memberNotFound();
+      // Banned first, so a rejoin racing this removal is refused.
+      await banFromRoom(roomId, target);
+      // Out of the channel before the room hears about it, so they get room:removed and nothing more.
+      io.in(userRoom(target)).socketsLeave(roomChannel(roomId));
+      await evict(io, roomId, target, true);
+      io.to(userRoom(target)).emit('room:removed', { roomId });
+      return {};
+    });
+
+    onEvent(io, socket, 'host:transfer', async ({ roomId, userId: target }, { userId }) => {
+      requireHost(roomId, userId, socket, 'Only the host can hand over the host role.');
+      if (target === userId) throw cannotTargetSelf('You’re already the host.');
+      if (!isMember(roomId, target)) throw memberNotFound();
+      setHost(roomId, target);
+      broadcastPresence(io, roomId);
+      await setRoomHost(roomId, target);
+      // After the new host is saved, so the card shows them.
+      broadcastRoomCard(io, roomId);
+      broadcastFollowLive(io, [userId, target]);
+      return {};
+    });
+
+    onEvent(io, socket, 'room:close', async ({ roomId }, { userId }) => {
+      requireHost(roomId, userId, socket, 'Only the host can close the room.');
+      const at = now();
+      await onClosing?.(roomId, at);
+      if (!(await closeRoomNow(roomId, at))) throw roomClosed();
+      // Everyone's focus time is saved by now, so their session summaries load straight away.
+      io.to(roomChannel(roomId)).emit('room:closed', { roomId });
+      const memberIds = listMembers(roomId).map((member) => member.userId);
+      for (const memberId of memberIds) {
+        cancelDeparture(roomId, memberId);
+        removeMember(roomId, memberId);
+      }
+      io.in(roomChannel(roomId)).socketsLeave(roomChannel(roomId));
+      broadcastRoomCard(io, roomId);
+      broadcastFollowLive(io, memberIds);
+      await onClosed?.(roomId).catch((err: unknown) =>
+        logger.error({ err, roomId }, 'failed to delete a closed room’s content'),
+      );
       return {};
     });
 

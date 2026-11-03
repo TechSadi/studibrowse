@@ -3,6 +3,7 @@ import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { INVITE_CODE_PATTERN, type CreateRoomInput, type RoomSummary } from '@studibrowse/shared';
 import { createApp } from '../../app';
+import { ROOM_CREATE_RATE_LIMIT } from '../../middleware/rateLimit';
 import { addSocket, resetPresence } from '../../realtime/presence';
 import { createUserWithToken } from '../../test/authHelpers';
 import { useTestDatabase } from '../../test/testDb';
@@ -58,6 +59,18 @@ function follow(token: string, id: string) {
 }
 
 describe('POST /api/rooms', () => {
+  it(`limits each person to ${ROOM_CREATE_RATE_LIMIT.limit} new rooms in the window`, async () => {
+    const { token } = await createUserWithToken();
+    const { token: otherToken } = await createUserWithToken();
+    for (let i = 0; i < ROOM_CREATE_RATE_LIMIT.limit; i++) {
+      expect((await createRoom(token)).status).toBe(201);
+    }
+    const blocked = await createRoom(token);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error.code).toBe('RATE_LIMITED');
+    expect((await createRoom(otherToken)).status).toBe(201);
+  });
+
   it('creates a room with the creator as host', async () => {
     const { user, token } = await createUserWithToken();
     const res = await createRoom(token, roomInput({ goals: [' Finish chapter 4 '], maxSize: 20 }));
@@ -204,8 +217,12 @@ describe('GET /api/rooms/public', () => {
 
     it('on any page', async () => {
       const { token } = await createUserWithToken();
-      for (let i = 0; i < 12; i++) await createRoomOk(token, { name: `Public ${i}` });
-      for (let i = 0; i < 12; i++) await createRoomOk(token, { name: `Private ${i}`, isPublic: false });
+      // Spread over hosts so no one runs into the room-creation rate limit.
+      const hosts = await Promise.all([1, 2, 3].map(() => createUserWithToken()));
+      const hostToken = (i: number) => hosts[i % hosts.length]!.token;
+      for (let i = 0; i < 12; i++) await createRoomOk(hostToken(i), { name: `Public ${i}` });
+      for (let i = 0; i < 12; i++)
+        await createRoomOk(hostToken(i), { name: `Private ${i}`, isPublic: false });
 
       const first = (await listPublic(token)).body;
       const second = (await listPublic(token, { page: first.nextPage })).body;

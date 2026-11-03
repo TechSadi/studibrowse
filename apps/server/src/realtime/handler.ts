@@ -46,8 +46,8 @@ async function run<E extends ClientEventName, Result>(
 ): Promise<Ack<Result>> {
   const userId = socket.data.userId;
   try {
-    const limiter = eventRateLimiters[event];
-    if (limiter && !limiter.consume(socket.id)) return { ok: false, error: RATE_LIMITED };
+    // Per person, not per socket: every tab and device shares one budget.
+    if (!eventRateLimiters[event].consume(userId)) return { ok: false, error: RATE_LIMITED };
 
     const parsed = clientEventSchemas[event].safeParse(payload);
     if (!parsed.success) {

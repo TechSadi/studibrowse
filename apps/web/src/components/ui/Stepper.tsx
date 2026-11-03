@@ -10,14 +10,25 @@ interface StepperProps {
   step: number;
   /** Appended to the value, e.g. "m" for "25m". */
   unit?: string;
+  /** Keeps the label for screen readers only, when the row around it already names it. */
+  hideLabel?: boolean;
 }
 
 /** A −/+ number control (timer settings, weekly goal). Clamped to min..max. */
-export function Stepper({ label, value, onChange, min, max, step, unit = '' }: StepperProps) {
+export function Stepper({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  unit = '',
+  hideLabel = false,
+}: StepperProps) {
   const set = (next: number) => onChange(Math.min(max, Math.max(min, next)));
   return (
     <div className={styles.stepper}>
-      <span>{label}</span>
+      <span className={hideLabel ? 'sr-only' : undefined}>{label}</span>
       <div role="group" aria-label={label}>
         <button
           type="button"

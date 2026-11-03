@@ -312,6 +312,32 @@ describe('POST /api/auth/logout', () => {
   });
 });
 
+describe('POST /api/auth/logout-all', () => {
+  it('needs a signed-in user', async () => {
+    expect((await request(app).post('/api/auth/logout-all')).status).toBe(401);
+  });
+
+  it('revokes every device and clears the cookie', async () => {
+    const first = await signUp();
+    const second = await logIn('alexsmith', validSignup.password);
+    const res = await request(app)
+      .post('/api/auth/logout-all')
+      .set('Authorization', `Bearer ${first.body.accessToken}`);
+    expect(res.status).toBe(204);
+    expect(refreshSetCookie(res)).toMatch(/Expires=Thu, 01 Jan 1970/);
+    expect(await RefreshToken.countDocuments()).toBe(0);
+    expect((await refreshWith(refreshCookie(first))).status).toBe(401);
+    expect((await refreshWith(refreshCookie(second))).status).toBe(401);
+  });
+
+  it('leaves other accounts signed in', async () => {
+    const mine = await signUp();
+    const theirs = await signUp({ username: 'mayak', email: 'maya@example.com' });
+    await request(app).post('/api/auth/logout-all').set('Authorization', `Bearer ${mine.body.accessToken}`);
+    expect((await refreshWith(refreshCookie(theirs))).status).toBe(200);
+  });
+});
+
 describe('GET /api/auth/me', () => {
   it('returns the signed-in user', async () => {
     const { body } = await signUp();

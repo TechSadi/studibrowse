@@ -39,5 +39,26 @@
   padding: 5px 12px;
   border-radius: 99px;
   background: var(--good-soft);
-  color: var(--good);
+  color: var(--good-ink);
+}
+
+/* The bordered, uppercase "Live" badge on room cards, invites and profiles (.live-tag in the mockup). */
+.liveTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--good-ink);
+  background: var(--good-soft);
+  border: 1px solid var(--good-line);
+  padding: 4px 10px 4px 9px;
+  border-radius: 99px;
+}
+
+.liveTag .liveDot {
+  width: 7px;
+  height: 7px;
 }

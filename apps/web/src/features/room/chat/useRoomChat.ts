@@ -70,7 +70,8 @@ export function useRoomChat(roomId: string, initialMessages: ChatMessage[], myUs
 
   useSocketEvent('chat:new', ({ message }) => {
     if (message.roomId !== roomId) return;
-    stopShowingTyping(message.userId);
+    // A brand-new message always has an author; only deleted accounts' old messages lose theirs.
+    if (message.userId) stopShowingTyping(message.userId);
     setMessages((current) => withMessage(current, message));
   });
 

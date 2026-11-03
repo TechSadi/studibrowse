@@ -52,7 +52,7 @@
 }
 
 .streak {
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 
 .tile p {
@@ -192,16 +192,8 @@
 }
 
 @media (max-width: 767px) {
-  .head {
-    margin: 22px 0 20px;
-  }
-
   .value {
     font-size: 30px;
-  }
-
-  .panel {
-    padding: 20px;
   }
 
   .chartSkeleton {

@@ -16,3 +16,13 @@ export function LivePill({ children, className }: { children: ReactNode; classNa
     </span>
   );
 }
+
+/** The bordered "Live" badge (mockup `.live-tag`). */
+export function LiveTag() {
+  return (
+    <span className={styles.liveTag}>
+      <LiveDot />
+      Live
+    </span>
+  );
+}

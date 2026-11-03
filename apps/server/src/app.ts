@@ -10,6 +10,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import { createGoogleVerifier, type GoogleVerifier } from './modules/auth/google';
 import { createHealthRouter } from './modules/health/health.routes';
+import { createNotificationsRouter } from './modules/notifications/notifications.routes';
 import { createProgressRouter } from './modules/progress/progress.routes';
 import { createRoomsRouter } from './modules/rooms/rooms.routes';
 import { createSessionsRouter } from './modules/sessions/sessions.routes';
@@ -20,7 +21,13 @@ export const JSON_BODY_LIMIT = '100kb';
 
 export interface AppDependencies {
   isDatabaseConnected: () => boolean;
+  /** For /api/health. The server passes its shutdown flag; defaults to never. */
+  isShuttingDown?: () => boolean;
+  /** Shown by /api/health. Defaults to env.release (the deployed commit). */
+  release?: string;
   clientOrigin: string;
+  /** Proxies in front of the server, for req.ip (see TRUST_PROXY in env.ts). Defaults to env.TRUST_PROXY. */
+  trustProxy?: number;
   /** Defaults to Resend in production and the server log otherwise. Tests pass a fake. */
   emailService?: EmailService;
   /** Defaults to google-auth-library with GOOGLE_CLIENT_ID. Tests pass a fake. */
@@ -29,19 +36,27 @@ export interface AppDependencies {
   storage?: StorageService;
   /** Tells the lobby about a room that was just created. The server wires it to Socket.IO; tests may leave it out. */
   onRoomCreated?: (roomId: string) => void;
+  /** Drops a deleted account's sockets. The server wires it to Socket.IO; tests may leave it out. */
+  onAccountDeleted?: (userId: string) => void;
 }
 
 /** Builds the Express app without listening, so tests can import it. */
 export function createApp({
   isDatabaseConnected,
+  isShuttingDown = () => false,
+  release = env.release,
   clientOrigin,
+  trustProxy = env.TRUST_PROXY,
   emailService = createEmailService(env),
   verifyGoogleToken = createGoogleVerifier(env.GOOGLE_CLIENT_ID),
   storage = createStorageService(env),
   onRoomCreated,
+  onAccountDeleted,
 }: AppDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
+  // Rate limits key on req.ip; behind Vercel and Render's proxies it's only the visitor's when this is right.
+  app.set('trust proxy', trustProxy);
   app.use(requestLogger);
   app.use(helmet());
   // credentials: the refresh token travels in a cookie.
@@ -49,13 +64,14 @@ export function createApp({
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());
 
-  app.use('/api/health', createHealthRouter(isDatabaseConnected));
+  app.use('/api/health', createHealthRouter({ isDatabaseConnected, isShuttingDown, release }));
   // The password, email and Google endpoints are rate limited inside the router.
   app.use('/api/auth', createAuthRouter({ emailService, verifyGoogleToken }));
-  app.use('/api/users', createUsersRouter());
+  app.use('/api/users', createUsersRouter({ onAccountDeleted }));
   app.use('/api/rooms', createRoomsRouter({ storage, onRoomCreated }));
   app.use('/api/sessions', createSessionsRouter());
   app.use('/api/progress', createProgressRouter());
+  app.use('/api/notifications', createNotificationsRouter());
 
   app.use(notFoundHandler);
   app.use(errorHandler);

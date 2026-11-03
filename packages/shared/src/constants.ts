@@ -127,6 +127,11 @@ export const TIMER_LIMITS = {
 /** How many people onboarding suggests following. */
 export const SUGGESTED_USERS_LIMIT = 5;
 
+/** Rows per page of a profile's Followers and Following lists, and the most one request returns. */
+export const FOLLOW_LIST_PAGE_SIZE = 20;
+/** A profile's Recent rooms. */
+export const PROFILE_RECENT_ROOMS = 5;
+
 /** How long a password reset link works. The Forgot password screen quotes it. */
 export const RESET_TOKEN_TTL_MINS = 30;
 
@@ -151,3 +156,21 @@ export type ResourceType = (typeof RESOURCE_TYPES)[number];
 /** Room started, room full, someone joined, round ended. */
 export const NOTIFICATION_TYPES = ['roomStarted', 'roomFull', 'memberJoined', 'roundEnded'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/** Which Settings toggle (NotificationPrefs) turns each type on or off. */
+export const NOTIFICATION_PREF_BY_TYPE = {
+  roomStarted: 'roomOpened',
+  roomFull: 'roomFull',
+  memberJoined: 'memberJoined',
+  roundEnded: 'roundEnded',
+} as const satisfies Record<NotificationType, string>;
+
+/** The Notifications page's tabs: All, Unread and Rooms opened (roomStarted). */
+export const NOTIFICATION_FILTERS = ['all', 'unread', 'rooms'] as const;
+export type NotificationFilter = (typeof NOTIFICATION_FILTERS)[number];
+
+export const NOTIFICATIONS_PAGE_SIZE = 20;
+/** Joins to the same room within this window become one notification ("Maya and 4 others joined"). */
+export const NOTIFICATION_GROUP_WINDOW_MS = 60_000;
+/** A room that fills, empties a seat and fills again within this window doesn't notify again. */
+export const ROOM_FULL_GROUP_WINDOW_MS = 10 * 60_000;

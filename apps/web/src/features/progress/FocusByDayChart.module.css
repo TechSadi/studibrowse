@@ -57,7 +57,7 @@
 /* A surface-coloured halo stands in for the mockup label's background. */
 .pace text {
   font-size: 12px;
-  fill: var(--faint);
+  fill: var(--muted);
   stroke: var(--surface);
   stroke-width: 6px;
   paint-order: stroke;

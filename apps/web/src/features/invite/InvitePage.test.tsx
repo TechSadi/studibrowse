@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InvitePreview, InvitePreviewResponse, PublicUser } from '@studibrowse/shared';
+import { ToastProvider } from '../../components/ui/Toast';
 import type * as ApiModule from '../../lib/api';
 import { ApiError } from '../../lib/api';
 import { makeUser } from '../../test/renderRoutes';
@@ -82,12 +83,14 @@ function renderInvite(code = CODE) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/r/${code}`]}>
-        <Routes>
-          <Route path="/r/:inviteCode" element={<InvitePage />} />
-          <Route path="*" element={<Where />} />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[`/r/${code}`]}>
+          <Routes>
+            <Route path="/r/:inviteCode" element={<InvitePage />} />
+            <Route path="*" element={<Where />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

@@ -1,5 +1,6 @@
-import { Link, NavLink } from 'react-router';
+import { Link, NavLink, useLocation } from 'react-router';
 import { useAuth } from '../../features/auth/AuthContext';
+import { NotificationBell } from '../../features/notifications/NotificationBell';
 import { useTheme } from '../../hooks/useTheme';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import { Avatar } from '../ui/Avatar';
@@ -16,6 +17,31 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings', label: 'Settings', icon: 'gear' },
 ];
 
+const navClass = (active: boolean) => (active ? `${styles.navItem} ${styles.active}` : styles.navItem);
+
+/** As in the mockup, Notifications opens the bell's dropdown, with the unread count beside it. */
+function NotificationsNavItem() {
+  const { pathname } = useLocation();
+  return (
+    <NotificationBell className={navClass(pathname === '/notifications')}>
+      {(unread) => (
+        <>
+          <Icon name="bell" />
+          <span className={styles.label}>
+            Notifications
+            {unread > 0 ? <span className="sr-only">, {unread} unread</span> : null}
+          </span>
+          {unread > 0 ? (
+            <span className={styles.count} aria-hidden="true">
+              {unread > 99 ? '99+' : unread}
+            </span>
+          ) : null}
+        </>
+      )}
+    </NotificationBell>
+  );
+}
+
 export function Sidebar() {
   const { state } = useAuth();
   const { theme, toggle } = useTheme();
@@ -29,16 +55,16 @@ export function Sidebar() {
         Menu
       </div>
       <nav className={styles.nav} aria-label="Main">
-        {NAV.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) => (isActive ? `${styles.navItem} ${styles.active}` : styles.navItem)}
-          >
-            <Icon name={item.icon} />
-            <span className={styles.label}>{item.label}</span>
-          </NavLink>
-        ))}
+        {NAV.map((item) =>
+          item.to === '/notifications' ? (
+            <NotificationsNavItem key={item.to} />
+          ) : (
+            <NavLink key={item.to} to={item.to} className={({ isActive }) => navClass(isActive)}>
+              <Icon name={item.icon} />
+              <span className={styles.label}>{item.label}</span>
+            </NavLink>
+          ),
+        )}
       </nav>
 
       <section className={styles.follows} aria-labelledby="side-follows">

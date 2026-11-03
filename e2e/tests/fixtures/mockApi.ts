@@ -3,13 +3,16 @@ import type {
   ApiErrorBody,
   AuthResponse,
   FollowedUser,
+  FollowListUser,
   InvitePreviewResponse,
   MySession,
+  NotificationListItem,
   ProgressSummaryResponse,
   PublicUser,
   RoomDetail,
   RoomSummary,
   SuggestedUser,
+  UserProfile,
 } from '@studibrowse/shared';
 
 /**
@@ -45,8 +48,12 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     timeZone: 'UTC',
     following: [],
     notificationPrefs: { roomOpened: true, roomFull: true, memberJoined: true, roundEnded: true },
+    privacy: { showStudying: true, showStats: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',
     createdAt: '2026-09-01T10:00:00.000Z',
+    hasPassword: true,
+    googleLinked: false,
+    passwordChangedAt: null,
     ...overrides,
   };
 }
@@ -83,6 +90,20 @@ export function makeMySession(overrides: Partial<MySession> = {}): MySession {
     goalsDone: 2,
     goalsTotal: 4,
     peopleCount: 12,
+    ...overrides,
+  };
+}
+
+export function makeNotification(overrides: Partial<NotificationListItem> = {}): NotificationListItem {
+  return {
+    id: `notification-${Math.random().toString(36).slice(2, 8)}`,
+    type: 'roomStarted',
+    roomId: 'room-1',
+    roomName: 'Late-night exam grind',
+    text: 'Maya Kapoor opened a room',
+    read: false,
+    createdAt: new Date().toISOString(),
+    roomOpen: true,
     ...overrides,
   };
 }
@@ -124,6 +145,14 @@ export class MockApi {
   progress: ProgressSummaryResponse = makeProgress();
   /** GET /api/sessions/mine, newest first. The cursor is the index of the next session. */
   mySessions: MySession[] = [];
+  /** GET /api/users/:username answers 404 for anyone not here. */
+  profiles: Record<string, UserProfile> = {};
+  /** GET /api/users/:username/followers and /following, by `${username}/${kind}`. The cursor is an index. */
+  followLists: Record<string, FollowListUser[]> = {};
+  /** Rows per page of a follow list. */
+  followPageSize = 20;
+  /** GET /api/notifications for whoever is signed in, newest first. One page. */
+  notifications: NotificationListItem[] = [];
 
   addAccount(user: PublicUser, password: string) {
     this.accounts.push({ user, password });
@@ -192,6 +221,7 @@ export class MockApi {
           : error(401, 'INVALID_CREDENTIALS', 'That email or username and password don’t match.');
       }
       case 'POST /api/auth/logout':
+      case 'POST /api/auth/logout-all':
         this.sessionUserId = null;
         return { status: 204 };
       case 'POST /api/auth/google':
@@ -218,13 +248,29 @@ export class MockApi {
       }
       case 'PATCH /api/users/me': {
         this.record('updateMe', body);
-        const { timerDefaults, onboarded, ...fields } = body as Partial<PublicUser> & { onboarded?: true };
+        const { timerDefaults, notificationPrefs, privacy, onboarded, ...fields } =
+          body as Partial<PublicUser> & {
+            onboarded?: true;
+          };
         return this.updateCurrentUser((user) => ({
           ...user,
           ...fields,
           timerDefaults: { ...user.timerDefaults, ...timerDefaults },
+          notificationPrefs: { ...user.notificationPrefs, ...notificationPrefs },
+          privacy: { ...user.privacy, ...privacy },
           onboardedAt: user.onboardedAt ?? (onboarded ? new Date().toISOString() : null),
         }));
+      }
+      case 'DELETE /api/users/me': {
+        this.record('deleteMe', body);
+        const account = this.currentAccount();
+        if (!account) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        if (String(body.username).trim().toLowerCase() !== account.user.username) {
+          return error(400, 'CONFIRMATION_MISMATCH', 'Type your username exactly to confirm.');
+        }
+        this.accounts = this.accounts.filter((a) => a !== account);
+        this.sessionUserId = null;
+        return { status: 204 };
       }
       case 'GET /api/users/suggestions': {
         const users: SuggestedUser[] = this.accounts
@@ -263,6 +309,26 @@ export class MockApi {
           status: 200,
           json: { sessions, nextCursor: end < this.mySessions.length ? String(end) : null },
         };
+      }
+      case 'GET /api/notifications': {
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const filter = url.searchParams.get('filter') ?? 'all';
+        const notifications = this.notifications.filter((n) =>
+          filter === 'unread' ? !n.read : filter === 'rooms' ? n.type === 'roomStarted' : true,
+        );
+        return { status: 200, json: { notifications, nextCursor: null } };
+      }
+      case 'GET /api/notifications/unread-count':
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        return { status: 200, json: { count: this.notifications.filter((n) => !n.read).length } };
+      case 'POST /api/notifications/read': {
+        this.record('markRead', body);
+        if (!this.currentAccount()) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        const id = typeof body.id === 'string' ? body.id : null;
+        this.notifications = this.notifications.map((n) =>
+          id === null || n.id === id ? { ...n, read: true } : n,
+        );
+        return { status: 200, json: { count: this.notifications.filter((n) => !n.read).length } };
       }
       case 'GET /api/rooms/public': {
         const me = this.currentAccount();
@@ -303,6 +369,26 @@ export class MockApi {
           return room
             ? { status: 200, json: { room } }
             : error(404, 'ROOM_NOT_FOUND', 'We couldn’t find that room. Check the link and try again.');
+        }
+        const listMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/(followers|following)$/);
+        if (listMatch && method === 'GET') {
+          const people = this.followLists[`${listMatch[1]}/${listMatch[2]}`];
+          if (!this.profiles[listMatch[1]!])
+            return error(404, 'USER_NOT_FOUND', 'We couldn’t find that person.');
+          const start = Number(url.searchParams.get('cursor') ?? 0);
+          const end = start + this.followPageSize;
+          const all = people ?? [];
+          return {
+            status: 200,
+            json: { users: all.slice(start, end), nextCursor: end < all.length ? String(end) : null },
+          };
+        }
+        const profileName = url.pathname.match(/^\/api\/users\/([a-z0-9_]+)$/)?.[1];
+        if (profileName && method === 'GET') {
+          const profile = this.profiles[profileName];
+          return profile
+            ? { status: 200, json: { profile } }
+            : error(404, 'USER_NOT_FOUND', 'We couldn’t find that person.');
         }
         const followId = url.pathname.match(/^\/api\/users\/([^/]+)\/follow$/)?.[1];
         if (followId && method === 'POST') {

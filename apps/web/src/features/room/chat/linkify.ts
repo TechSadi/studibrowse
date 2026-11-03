@@ -22,15 +22,20 @@ function count(text: string, char: string): number {
   return text.split(char).length - 1;
 }
 
+/** Whether `href` is a well-formed http(s) URL, the only kind ever rendered as a link. */
+export function isWebUrl(href: string): boolean {
+  try {
+    const url = new URL(href);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== '';
+  } catch {
+    return false;
+  }
+}
+
 /** The href for a matched link, or null if it isn't a well-formed http(s) URL. */
 function safeHref(link: string): string | null {
   const href = /^www\./i.test(link) ? `https://${link}` : link;
-  try {
-    const url = new URL(href);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname ? href : null;
-  } catch {
-    return null;
-  }
+  return isWebUrl(href) ? href : null;
 }
 
 /** Splits a chat message into plain text and links, for rendering as React children (never as HTML). */

@@ -55,3 +55,11 @@
     opacity: 1;
   }
 }
+
+/* Above the phone tab bar (mockup .toasts at phone width). */
+@media (max-width: 767px) {
+  .toasts {
+    right: 16px;
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  }
+}

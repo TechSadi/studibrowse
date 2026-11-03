@@ -46,6 +46,20 @@ export function localDayNumber(date: Date, timeZone: string): number {
 }
 
 /**
+ * The streak to show at `now`. Streaks only change when a session is logged, so one whose last day is before
+ * yesterday has lapsed and shows as 0.
+ */
+export function displayedStreak(
+  current: number,
+  lastStudiedAt: Date | null,
+  timeZone: string,
+  now: Date,
+): number {
+  if (!lastStudiedAt) return 0;
+  return localDayNumber(lastStudiedAt, timeZone) >= localDayNumber(now, timeZone) - 1 ? current : 0;
+}
+
+/**
  * Someone studied at `studiedAt`. The next study day after the last one adds a day; a missed day starts over
  * at 1; the same day (or an earlier one, from a session saved late) changes nothing. So applying the same
  * study twice is harmless, which lets a partial save and the final save both record it.

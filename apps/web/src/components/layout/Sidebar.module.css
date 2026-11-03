@@ -24,7 +24,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
   padding: 0 10px 8px;
 }
 
@@ -48,6 +48,16 @@
   transition:
     background 0.15s,
     color 0.15s;
+}
+
+.navItem .count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .navItem:hover {
@@ -167,14 +177,27 @@
   }
 
   .navItem {
+    position: relative;
     justify-content: center;
-    width: 48px;
+    width: 100%;
     padding: 0;
+  }
+
+  /* No room for the number: a dot, like the top bar's bell. */
+  .navItem .count {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    font-size: 0;
+    box-shadow: 0 0 0 2px var(--bg-raise);
   }
 
   .theme {
     justify-content: center;
-    width: 48px;
+    width: 100%;
   }
 
   .me {

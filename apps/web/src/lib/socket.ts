@@ -1,4 +1,5 @@
-import { io, type Socket } from 'socket.io-client';
+import type { ManagerOptions, Socket, SocketOptions } from 'socket.io-client';
+import type * as SocketIoClient from 'socket.io-client';
 import type {
   Ack,
   AckData,
@@ -10,6 +11,7 @@ import type {
 } from '@studibrowse/shared';
 import { SOCKET_ERROR_CODES } from '@studibrowse/shared';
 import { ApiError, endSession, getAccessToken, NETWORK_ERROR_CODE, refreshSession } from './api';
+import { config } from './config';
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -35,6 +37,12 @@ let socket: AppSocket | null = null;
 let hadTrouble = false;
 let refreshedSinceConnect = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
+// socket.io-client is loaded on first use so signed-out pages (Welcome, login, sign-up) don't download it.
+type SocketIoModule = typeof SocketIoClient;
+let loadingSocketIo: Promise<SocketIoModule> | null = null;
+let pendingConnect: Promise<AppSocket | null> | null = null;
+// Bumped by disconnectSocket, so a connect still waiting on the import knows it was cancelled.
+let connectTicket = 0;
 let snapshot: SocketSnapshot = { socket: null, status: 'connecting' };
 const listeners = new Set<() => void>();
 
@@ -96,14 +104,44 @@ function onBrowserOnline() {
   if (socket && !socket.connected) socket.connect();
 }
 
-/** Opens the socket for the signed-in user. Safe to call more than once. */
-export function connectSocket(): AppSocket {
-  if (socket) return socket;
-  const created: AppSocket = io({
+function loadSocketIo(): Promise<SocketIoModule> {
+  loadingSocketIo ??= import('socket.io-client');
+  return loadingSocketIo;
+}
+
+/**
+ * Opens the socket for the signed-in user. Safe to call more than once. Resolves with null when
+ * disconnectSocket ran while the library was loading, or when the library couldn't be downloaded.
+ */
+export function connectSocket(): Promise<AppSocket | null> {
+  if (socket) return Promise.resolve(socket);
+  if (pendingConnect) return pendingConnect;
+  const ticket = ++connectTicket;
+  pendingConnect = loadSocketIo().then(
+    ({ io }) => {
+      pendingConnect = null;
+      return ticket === connectTicket ? openSocket(io) : null;
+    },
+    () => {
+      // Most likely offline: let the next sign-in or reload try the download again.
+      pendingConnect = null;
+      loadingSocketIo = null;
+      hadTrouble = true;
+      publish();
+      return null;
+    },
+  );
+  return pendingConnect;
+}
+
+function openSocket(io: SocketIoModule['io']): AppSocket {
+  const options: Partial<ManagerOptions & SocketOptions> = {
     autoConnect: false,
     // A function, so every reconnect sends the newest access token.
     auth: (cb) => cb({ token: getAccessToken() }),
-  });
+  };
+  // The JWT in the handshake is the only credential, so a cross-origin socket needs no cookie.
+  const created: AppSocket = config.apiUrl ? io(config.apiUrl, options) : io(options);
   socket = created;
   hadTrouble = false;
   refreshedSinceConnect = false;
@@ -127,6 +165,8 @@ export function connectSocket(): AppSocket {
 
 /** Closes the socket (logging out, or the session ended). */
 export function disconnectSocket(): void {
+  connectTicket++;
+  pendingConnect = null;
   if (retryTimer) clearTimeout(retryTimer);
   retryTimer = null;
   window.removeEventListener('online', onBrowserOnline);

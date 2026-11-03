@@ -9,6 +9,9 @@ export const PUBLIC_ONLY_PATHS = ['/', '/signup', '/login', '/forgot-password'];
  */
 export function safeNextPath(next: string | null | undefined): string | null {
   if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return null;
+  // Browsers drop tabs and newlines from URLs, so "/\t/evil.example" would become "//evil.example".
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point.
+  if (/[\u0000- \u007f]/.test(next)) return null;
   const pathname = next.split(/[?#]/, 1)[0] ?? '';
   return PUBLIC_ONLY_PATHS.includes(pathname) ? null : next;
 }

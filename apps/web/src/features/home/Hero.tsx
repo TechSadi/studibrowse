@@ -1,8 +1,14 @@
 import { Link } from 'react-router';
-import type { RoomSummary } from '@studibrowse/shared';
+import type { FollowedUser, RoomSummary } from '@studibrowse/shared';
+import { AvatarStack } from '../../components/ui/Avatar';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
+import { LivePill } from '../../components/ui/Pill';
 import { useNow } from '../../hooks/useNow';
+import { avatarTone, initialsOf } from '../../lib/avatar';
+import { useAuth } from '../auth/AuthContext';
+import { useFollowingPeople } from '../follows/useFollowingPeople';
+import { useFollowLive } from '../follows/useFollowLive';
 import { firstName } from '../room/people';
 import { phaseView } from '../rooms/timerText';
 import styles from './Home.module.css';
@@ -12,16 +18,33 @@ import { useLiveRooms } from './useLiveRooms';
 const RING_RADIUS = 52;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 const pad = (n: number) => String(n).padStart(2, '0');
+/** Faces in the hero's stack before the rest become "+N". */
+const MAX_FACES = 4;
+const NOBODY: string[] = [];
 
 /** Moves focus (and the view) to Rooms worth joining. */
 function goToLiveRooms() {
   document.getElementById('live-heading')?.focus();
 }
 
+/** The people you follow who are in a public room right now, from data the sidebar already loads. */
+function useFollowedStudying(): FollowedUser[] {
+  const { state } = useAuth();
+  const following = state.user?.following ?? NOBODY;
+  const people = useFollowingPeople(following).data?.users ?? [];
+  const live = useFollowLive(following);
+  return people.filter((person) => live.has(person.id));
+}
+
 export function Hero() {
+  const studying = useFollowedStudying();
+  const faces = studying.slice(0, MAX_FACES);
   return (
     <section className={styles.hero} aria-labelledby="hero-heading">
       <div className={styles.heroCopy}>
+        {studying.length > 0 ? (
+          <LivePill className={styles.heroPill}>Your people are studying</LivePill>
+        ) : null}
         <h2 id="hero-heading">Study with people, not alone.</h2>
         <p>
           Open a room, share the link, and focus together on one shared timer. Everyone can work on something
@@ -32,6 +55,16 @@ export function Hero() {
             Find your room
             <Icon name="arrow" />
           </Button>
+          {faces.length > 0 ? (
+            <AvatarStack
+              people={faces.map((person) => ({
+                initials: initialsOf(person.name),
+                tone: avatarTone(person.avatarColor),
+              }))}
+              more={studying.length > faces.length ? studying.length - faces.length : undefined}
+              label={`Studying now: ${studying.map((person) => firstName(person.name)).join(', ')}`}
+            />
+          ) : null}
         </div>
       </div>
       <HappeningNowCard />

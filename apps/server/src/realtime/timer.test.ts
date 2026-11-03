@@ -11,6 +11,7 @@ import {
   phaseDurationMs,
   reset,
   resume,
+  retimeWaiting,
   skip,
   start,
   type TimerState,
@@ -276,6 +277,49 @@ describe('advance', () => {
     for (const state of [idleTimer(), pausedState('focus', 2, 0), done(4)]) {
       expect(advance(state, settings, now())).toBe(state);
     }
+  });
+});
+
+describe('timer settings changed mid-run', () => {
+  it('keeps the running phase’s endsAt and times the next phase with the new settings', () => {
+    const state = start(idleTimer(), settings, now());
+    const longer = { ...settings, focusMins: 50, shortBreakMins: 10 };
+    const onBreak = finishPhase(state, longer);
+    expect(onBreak.phase).toBe('shortBreak');
+    expect(onBreak.endsAt).toEqual(at(25 * MIN + 10 * MIN));
+  });
+
+  it('ends the run after this break when the rounds were lowered to this round', () => {
+    const state = runningState('shortBreak', 2, at(5 * MIN));
+    expect(finishPhase(state, { ...settings, totalRounds: 2 })).toEqual(done(2));
+  });
+
+  it('ends the run after this focus round when the rounds were lowered below it', () => {
+    const state = runningState('focus', 3, at(25 * MIN));
+    expect(finishPhase(state, { ...settings, totalRounds: 2 })).toEqual(done(2));
+  });
+});
+
+describe('retimeWaiting', () => {
+  const shorter = { ...manual, focusMins: 15, shortBreakMins: 3 };
+
+  it('gives a phase waiting for the host at full length the new length', () => {
+    expect(retimeWaiting(pausedState('shortBreak', 1, 5 * MIN), manual, shorter)).toEqual(
+      pausedState('shortBreak', 1, 3 * MIN),
+    );
+  });
+
+  it('leaves a part-run pause, a running phase, idle and done alone', () => {
+    expect(retimeWaiting(pausedState('focus', 1, 10 * MIN), manual, shorter)).toBeNull();
+    expect(retimeWaiting(runningState('focus', 1, at(MIN)), manual, shorter)).toBeNull();
+    expect(retimeWaiting(idleTimer(), manual, shorter)).toBeNull();
+    expect(retimeWaiting(done(4), manual, shorter)).toBeNull();
+  });
+
+  it('returns null when the phase’s length didn’t change', () => {
+    expect(
+      retimeWaiting(pausedState('focus', 2, 25 * MIN), manual, { ...shorter, focusMins: 25 }),
+    ).toBeNull();
   });
 });
 

@@ -105,6 +105,22 @@ export function advanceSteps(state: TimerState, settings: TimerSettings, now: Da
   return steps;
 }
 
+/**
+ * The host changed the timer settings. A phase waiting for the host at the full length it was given (it hasn't
+ * run yet) takes the new length; anything running or part-run keeps its time, so changes apply from the next
+ * phase. Returns null when nothing changes.
+ */
+export function retimeWaiting(
+  state: TimerState,
+  previous: TimerSettings,
+  next: TimerSettings,
+): TimerState | null {
+  if (!isActive(state) || !isPaused(state)) return null;
+  if (state.pausedRemaining !== phaseDurationMs(state.phase, previous)) return null;
+  const length = phaseDurationMs(state.phase, next);
+  return length === state.pausedRemaining ? null : { ...state, pausedRemaining: length };
+}
+
 /** How much of the current focus phase has run so far (pauses excluded). 0 outside a focus phase. */
 export function focusRunMs(state: TimerState, settings: TimerSettings, now: Date): number {
   if (state.phase !== 'focus') return 0;
@@ -115,7 +131,7 @@ export function focusRunMs(state: TimerState, settings: TimerSettings, now: Date
 
 /**
  * Focus round r → done after the last round, else a long break every `roundsBeforeLong` rounds, else a short one.
- * A break → focus round r + 1. With `autoStart` off the next phase waits, paused at full length, for the host.
+ * A break → focus round r + 1, or done if r is already the last round (the host lowered the round count). With `autoStart` off the next phase waits, paused at full length, for the host.
  */
 function nextPhase(
   state: TimerState & { phase: ActivePhase },
@@ -131,6 +147,10 @@ function nextPhase(
     }
     phase = round % settings.roundsBeforeLong === 0 ? 'longBreak' : 'shortBreak';
   } else {
+    // The host may have lowered the round count during this break: the run is already over.
+    if (round >= settings.totalRounds) {
+      return { phase: 'done', round: settings.totalRounds, endsAt: null, pausedRemaining: null };
+    }
     phase = 'focus';
     round += 1;
   }

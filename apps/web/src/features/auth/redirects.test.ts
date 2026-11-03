@@ -27,6 +27,13 @@ describe('safeNextPath', () => {
     },
   );
 
+  it.each(['/\t/evil.example', '/\n/evil.example', '/ /evil.example', '/room\u0000'])(
+    'rejects %j, which a browser could turn into another site',
+    (next) => {
+      expect(safeNextPath(next)).toBeNull();
+    },
+  );
+
   it('rejects public-only pages, which would redirect again', () => {
     expect(safeNextPath('/login')).toBeNull();
     expect(safeNextPath('/?x=1')).toBeNull();

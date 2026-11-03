@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../app';
+import { FOLLOW_RATE_LIMIT } from '../../middleware/rateLimit';
 import { createUserWithToken } from '../../test/authHelpers';
 import { useTestDatabase } from '../../test/testDb';
 import { User } from './user.model';
@@ -127,6 +128,22 @@ describe('POST and DELETE /api/users/:id/follow', () => {
   function unfollow(token: string, id: string) {
     return request(app).delete(`/api/users/${id}/follow`).set('Authorization', `Bearer ${token}`);
   }
+
+  it(`counts follows and unfollows together: the ${FOLLOW_RATE_LIMIT.limit + 1}th in the window gets 429`, async () => {
+    const { token } = await createUserWithToken();
+    const { token: otherToken } = await createUserWithToken();
+    const { user: maya } = await createUserWithToken({ name: 'Maya Kapoor' });
+
+    for (let i = 0; i < FOLLOW_RATE_LIMIT.limit; i++) {
+      const res = i % 2 === 0 ? await follow(token, maya.id) : await unfollow(token, maya.id);
+      expect(res.status).toBe(200);
+    }
+    const blocked = await follow(token, maya.id);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error.code).toBe('RATE_LIMITED');
+    // Counted per person, not per IP.
+    expect((await follow(otherToken, maya.id)).status).toBe(200);
+  });
 
   it('follows and unfollows someone, and both are idempotent', async () => {
     const { token } = await createUserWithToken();

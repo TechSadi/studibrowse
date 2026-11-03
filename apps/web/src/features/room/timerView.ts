@@ -52,9 +52,19 @@ function roundDots(timer: RoomTimer, total: number): RoundDot[] {
   });
 }
 
-/** What the focus room's timer shows, from the server's timer and the time left (see useRoomTimer). */
-export function timerView(timer: RoomTimer, settings: TimerSettings, remainingMs: number | null): TimerView {
-  const total = settings.totalRounds;
+/**
+ * What the focus room's timer shows, from the server's timer and the time left (see useRoomTimer). The ring is
+ * drawn against `phaseSettings`, the settings the current phase was timed with (see usePhaseSettings), since
+ * the host's changes apply from the next phase.
+ */
+export function timerView(
+  timer: RoomTimer,
+  settings: TimerSettings,
+  remainingMs: number | null,
+  phaseSettings: TimerSettings = settings,
+): TimerView {
+  // The host may have lowered the rounds below the one running; it's the last one now.
+  const total = Math.max(settings.totalRounds, timer.phase === 'done' ? 0 : timer.round);
   const base = { label: LABELS[timer.phase], dots: roundDots(timer, total) };
 
   if (timer.phase === 'done') {
@@ -80,7 +90,7 @@ export function timerView(timer: RoomTimer, settings: TimerSettings, remainingMs
     };
   }
 
-  const length = phaseMs(timer.phase, settings);
+  const length = phaseMs(timer.phase, phaseSettings);
   const left = remainingMs ?? length;
   const running = timer.endsAt !== null;
   return {

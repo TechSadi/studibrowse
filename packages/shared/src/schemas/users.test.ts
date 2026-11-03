@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { updateMeSchema, userIdParamsSchema } from './users';
+import {
+  changeEmailSchema,
+  deleteAccountSchema,
+  followListQuerySchema,
+  updateMeSchema,
+  userIdParamsSchema,
+  usernameParamsSchema,
+} from './users';
 
 describe('updateMeSchema', () => {
   it('accepts every onboarding field', () => {
@@ -29,6 +36,25 @@ describe('updateMeSchema', () => {
     expect(updateMeSchema.parse({ timeZone: 'UTC' })).toEqual({ timeZone: 'UTC' });
   });
 
+  it('accepts part of the privacy settings', () => {
+    expect(updateMeSchema.parse({ privacy: { showStats: false } })).toEqual({
+      privacy: { showStats: false },
+    });
+  });
+
+  it('trims the name and lowercases the username', () => {
+    expect(updateMeSchema.parse({ name: '  Alex Smith ', username: 'AlexS' })).toEqual({
+      name: 'Alex Smith',
+      username: 'alexs',
+    });
+  });
+
+  it('accepts part of the notification settings', () => {
+    expect(updateMeSchema.parse({ notificationPrefs: { memberJoined: false } })).toEqual({
+      notificationPrefs: { memberJoined: false },
+    });
+  });
+
   it('trims and de-duplicates subjects', () => {
     expect(updateMeSchema.parse({ subjects: [' Maths', 'Maths ', 'Law'] }).subjects).toEqual([
       'Maths',
@@ -51,7 +77,15 @@ describe('updateMeSchema', () => {
     ['more than 12 rounds', { timerDefaults: { totalRounds: 13 } }],
     ['an unknown timer field', { timerDefaults: { autoStart: true } }],
     ['onboarded: false', { onboarded: false }],
+    ['an unknown privacy setting', { privacy: { showEmail: true } }],
+    ['a non-boolean privacy setting', { privacy: { showStats: 'no' } }],
+    ['an empty name', { name: '   ' }],
+    ['a long name', { name: 'x'.repeat(51) }],
+    ['a username with spaces', { username: 'alex smith' }],
+    ['an unknown notification setting', { notificationPrefs: { newFollowers: true } }],
+    ['a non-boolean notification setting', { notificationPrefs: { roomFull: 1 } }],
     ['fields with their own flow', { email: 'new@example.com' }],
+    ['a password', { password: 'secret123!' }],
     ['a raw onboardedAt', { onboardedAt: '2026-01-01T00:00:00Z' }],
   ])('rejects %s', (_, body) => {
     expect(updateMeSchema.safeParse(body).success).toBe(false);
@@ -65,5 +99,56 @@ describe('userIdParamsSchema', () => {
 
   it.each(['me', '123', '6650f0c2a1b2c3d4e5f6071z'])('rejects %j', (id) => {
     expect(userIdParamsSchema.safeParse({ id }).success).toBe(false);
+  });
+});
+
+describe('usernameParamsSchema', () => {
+  it('lowercases the username', () => {
+    expect(usernameParamsSchema.parse({ username: 'MayaK' })).toEqual({ username: 'mayak' });
+  });
+
+  it.each(['ab', 'has space', 'x'.repeat(21)])('rejects %j', (username) => {
+    expect(usernameParamsSchema.safeParse({ username }).success).toBe(false);
+  });
+});
+
+describe('followListQuerySchema', () => {
+  it('defaults the page size', () => {
+    expect(followListQuerySchema.parse({})).toEqual({ limit: 20 });
+  });
+
+  it('coerces the limit from the query string', () => {
+    expect(followListQuerySchema.parse({ limit: '5', cursor: 'abc' })).toEqual({ limit: 5, cursor: 'abc' });
+  });
+
+  it.each(['0', '21', '2.5'])('rejects a limit of %s', (limit) => {
+    expect(followListQuerySchema.safeParse({ limit }).success).toBe(false);
+  });
+});
+
+describe('changeEmailSchema', () => {
+  it('normalises the email', () => {
+    expect(changeEmailSchema.parse({ email: ' New@Example.com ', password: 'pw' })).toEqual({
+      email: 'new@example.com',
+      password: 'pw',
+    });
+  });
+
+  it.each([
+    ['a bad email', { email: 'nope', password: 'pw' }],
+    ['no password', { email: 'a@b.co', password: '' }],
+    ['an extra field', { email: 'a@b.co', password: 'pw', name: 'x' }],
+  ])('rejects %s', (_, body) => {
+    expect(changeEmailSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('deleteAccountSchema', () => {
+  it('normalises the typed username', () => {
+    expect(deleteAccountSchema.parse({ username: ' AlexSmith ' })).toEqual({ username: 'alexsmith' });
+  });
+
+  it.each([{}, { username: '' }, { username: 'alex', extra: true }])('rejects %j', (body) => {
+    expect(deleteAccountSchema.safeParse(body).success).toBe(false);
   });
 });

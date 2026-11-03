@@ -15,7 +15,7 @@ import {
 } from '../test/socketHelpers';
 import { useTestDatabase } from '../test/testDb';
 import { onEvent, onSignal } from './handler';
-import { CHAT_RATE_LIMIT, TYPING_RATE_LIMIT } from './socketRateLimit';
+import { CHAT_RATE_LIMIT, MAX_SOCKET_PAYLOAD_BYTES, TYPING_RATE_LIMIT } from './socketRateLimit';
 import { userRoom, type HandlerRegistrar } from './types';
 
 useTestDatabase();
@@ -118,6 +118,7 @@ describe('private user rooms', () => {
       id: 'n1',
       type: 'roomStarted',
       roomId,
+      roomName: 'Late-night exam grind',
       text: 'Maya opened a room',
       read: false,
       createdAt: new Date().toISOString(),
@@ -188,7 +189,7 @@ describe('handler wrapper', () => {
 });
 
 describe('rate limits', () => {
-  it(`allows ${CHAT_RATE_LIMIT.limit} chat messages per socket, then acks RATE_LIMITED`, async () => {
+  it(`allows ${CHAT_RATE_LIMIT.limit} chat messages per person, then acks RATE_LIMITED`, async () => {
     const [first, second] = await server.connectUsers(2);
 
     for (let i = 0; i < CHAT_RATE_LIMIT.limit; i += 1) {
@@ -197,8 +198,29 @@ describe('rate limits', () => {
     const limited = await emitAck(first!.client, 'chat:send', { roomId, text: 'one more' });
     expect(limited).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
 
-    // Another socket has its own budget.
+    // Another person has their own budget.
     expect((await emitAck(second!.client, 'chat:send', { roomId, text: 'hi' })).ok).toBe(true);
+  });
+
+  it('shares one budget across all of a person’s sockets, so more tabs don’t buy more messages', async () => {
+    const { token } = await createUserWithToken();
+    const tabA = await server.connectWithToken(token);
+    const tabB = await server.connectWithToken(token);
+
+    for (let i = 0; i < CHAT_RATE_LIMIT.limit; i += 1) {
+      const tab = i % 2 === 0 ? tabA : tabB;
+      expect((await emitAck(tab, 'chat:send', { roomId, text: `m${i}` })).ok).toBe(true);
+    }
+    expect(await emitAck(tabB, 'chat:send', { roomId, text: 'one more' })).toMatchObject({
+      ok: false,
+      error: { code: 'RATE_LIMITED' },
+    });
+    // A fresh tab doesn't reset it either.
+    const tabC = await server.connectWithToken(token);
+    expect(await emitAck(tabC, 'chat:send', { roomId, text: 'and another' })).toMatchObject({
+      ok: false,
+      error: { code: 'RATE_LIMITED' },
+    });
   });
 
   it(`delivers at most ${TYPING_RATE_LIMIT.limit} typing events per window and drops the rest`, async () => {
@@ -213,6 +235,45 @@ describe('rate limits', () => {
     await vi.waitFor(() => expect(heard).toHaveBeenCalledTimes(TYPING_RATE_LIMIT.limit));
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(heard).toHaveBeenCalledTimes(TYPING_RATE_LIMIT.limit);
+  });
+});
+
+describe('connection limits', () => {
+  it('refuses a socket past the per-person cap with RATE_LIMITED, and lets one in again after a tab closes', async () => {
+    const capped = await startSocketServer({ maxSocketsPerUser: 2 });
+    try {
+      const { user, token } = await createUserWithToken();
+      const first = await capped.connectWithToken(token);
+      await capped.connectWithToken(token);
+
+      const err = await capped.connectWithToken(token).then(
+        () => null,
+        (error: TestConnectError) => error,
+      );
+      expect(err?.data).toMatchObject({ code: 'RATE_LIMITED' });
+
+      // Someone else is unaffected.
+      const other = await createUserWithToken();
+      expect((await capped.connectWithToken(other.token)).connected).toBe(true);
+
+      first.disconnect();
+      await vi.waitFor(() => expect(capped.io.sockets.adapter.rooms.get(userRoom(user.id))?.size).toBe(1));
+      expect((await capped.connectWithToken(token)).connected).toBe(true);
+    } finally {
+      await capped.close();
+    }
+  });
+
+  it(`drops a client that sends a payload over ${MAX_SOCKET_PAYLOAD_BYTES} bytes`, async () => {
+    const { client } = await connectOne();
+    const dropped = nextEvent(client, 'disconnect' as never);
+    chatHandler.mockClear();
+    (client.emit as (event: string, payload: unknown) => void)('chat:send', {
+      roomId,
+      text: 'a'.repeat(MAX_SOCKET_PAYLOAD_BYTES + 1),
+    });
+    await dropped;
+    expect(chatHandler).not.toHaveBeenCalled();
   });
 });
 

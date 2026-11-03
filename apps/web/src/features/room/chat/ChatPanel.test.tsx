@@ -26,7 +26,7 @@ const hana: PresenceMember = {
   focusingSince: null,
 };
 
-function message(id: string, userId: string, text: string): ChatMessage {
+function message(id: string, userId: string | null, text: string): ChatMessage {
   return { id, roomId: ROOM, userId, text, createdAt: '2026-01-05T19:05:00.000Z' };
 }
 
@@ -37,7 +37,8 @@ function renderPanel(messages: ChatMessage[] = [], focusRound = false) {
       initialMessages={messages}
       myUserId={ME}
       members={[hana]}
-      focusRound={focusRound}
+      phase={focusRound ? 'focus' : 'shortBreak'}
+      round={1}
     />,
   );
 }
@@ -47,11 +48,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+/** The chat's message rows, without the system lines ("You joined the room"), which have no time. */
+const messageItems = () => screen.getAllByRole('listitem').filter((item) => item.querySelector('time'));
+
 describe('ChatPanel', () => {
   it('shows who wrote each message, with yours as You', () => {
     renderPanel([message('1', 'hana', 'Thanks for the formula sheet'), message('2', ME, 'Any time')]);
 
-    const items = screen.getAllByRole('listitem');
+    const items = messageItems();
     expect(items[0]?.textContent).toContain('Hana Ito');
     expect(items[0]?.textContent).toContain('Thanks for the formula sheet');
     expect(items[1]?.textContent).toContain('You');
@@ -59,7 +63,37 @@ describe('ChatPanel', () => {
 
   it('names someone who has left as Someone', () => {
     renderPanel([message('1', 'gone', 'bye')]);
-    expect(screen.getByRole('listitem').textContent).toContain('Someone');
+    expect(messageItems()[0]?.textContent).toContain('Someone');
+  });
+
+  it('names the author of a deleted account as Deleted account', () => {
+    renderPanel([message('1', null, 'See you after the break')]);
+    expect(messageItems()[0]?.textContent).toContain('Deleted account');
+  });
+
+  it('adds system lines for your arrival, the timer and a new host, after the history', () => {
+    const { rerender } = renderPanel([message('1', 'hana', 'Evening all')]);
+    const panel = (phase: 'focus' | 'shortBreak', members: PresenceMember[]) => (
+      <ChatPanel
+        roomId={ROOM}
+        initialMessages={[message('1', 'hana', 'Evening all')]}
+        myUserId={ME}
+        members={members}
+        phase={phase}
+        round={1}
+      />
+    );
+    rerender(panel('focus', [hana]));
+    rerender(panel('shortBreak', [hana]));
+    rerender(panel('shortBreak', [{ ...hana, isHost: true }]));
+
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      expect.stringContaining('Evening all'),
+      'You joined the room',
+      'Round 1 started',
+      'Round 1 complete · break started',
+      'Hana is now the host',
+    ]);
   });
 
   it('has an empty state', () => {
@@ -77,7 +111,7 @@ describe('ChatPanel', () => {
 
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(''));
     expect(emitWithAck).toHaveBeenCalledWith('chat:send', { roomId: ROOM, text: 'hello' });
-    expect(screen.getByRole('listitem').textContent).toContain('hello');
+    expect(messageItems()[0]?.textContent).toContain('hello');
   });
 
   it('does not send a blank draft', () => {

@@ -135,6 +135,41 @@ describe('room:settings', () => {
     expect(ack).toMatchObject({ ok: false, error: { code: 'ROOM_FULL' } });
   });
 
+  it('leaves a running phase’s endsAt alone: timer changes apply from the next phase', async () => {
+    const { host, roomId } = await roomWith(0);
+    const endsAt = new Date(Date.now() + 10 * 60_000);
+    await Room.updateOne(
+      { _id: roomId },
+      { timer: { phase: 'focus', round: 1, endsAt, pausedRemaining: null } },
+    );
+    const timerStates: unknown[] = [];
+    host.client.on('timer:state', (payload) => timerStates.push(payload));
+
+    expect(await emitAck(host.client, 'room:settings', settingsFor(roomId))).toEqual({ ok: true, data: {} });
+
+    const stored = (await Room.findById(roomId).lean())!;
+    expect(stored.timer.endsAt).toEqual(endsAt);
+    expect(stored.timerSettings.focusMins).toBe(50);
+    expect(timerStates).toEqual([]);
+  });
+
+  it('gives a phase waiting for the host the new length and tells the room', async () => {
+    const { host, guests, roomId } = await roomWith(1);
+    await Room.updateOne(
+      { _id: roomId },
+      { timer: { phase: 'focus', round: 2, endsAt: null, pausedRemaining: 25 * 60_000 } },
+    );
+    const heard = nextEvent(guests[0]!.client, 'timer:state');
+
+    await emitAck(host.client, 'room:settings', settingsFor(roomId));
+
+    expect(await heard).toMatchObject({
+      roomId,
+      timer: { phase: 'focus', round: 2, endsAt: null, pausedRemaining: 50 * 60_000 },
+    });
+    expect((await Room.findById(roomId).lean())!.timer.pausedRemaining).toBe(50 * 60_000);
+  });
+
   it('validates the payload', async () => {
     const { host, roomId } = await roomWith(0);
     const ack = await emitAck(host.client, 'room:settings', settingsFor(roomId, { name: '  ' }));

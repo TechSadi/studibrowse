@@ -46,7 +46,10 @@ export async function resetPassword({ token, password }: ResetPasswordData): Pro
   if (!resetToken) throw resetTokenInvalid();
 
   const passwordHash = await bcrypt.hash(password, env.BCRYPT_COST);
-  const updated = await User.updateOne({ _id: resetToken.userId }, { passwordHash });
+  const updated = await User.updateOne(
+    { _id: resetToken.userId },
+    { passwordHash, passwordChangedAt: new Date() },
+  );
   if (updated.matchedCount === 0) throw resetTokenInvalid();
 
   await Promise.all([

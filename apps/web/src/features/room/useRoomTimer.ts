@@ -9,35 +9,23 @@ export interface TimerSnapshot {
   serverNow: number;
 }
 
-export interface RoomTimerView {
-  timer: RoomTimer;
-  /** Milliseconds left in the phase, refreshed once per second while running. Null when idle or done. */
-  remainingMs: number | null;
-}
-
-interface Clock {
+/** The room's timer and how far this device's clock is from the server's. Changes only when the server says so. */
+export interface RoomClock {
   timer: RoomTimer;
   offset: number;
 }
 
-function receive({ timer, serverNow }: TimerSnapshot): Clock {
+function receive({ timer, serverNow }: TimerSnapshot): RoomClock {
   return { timer, offset: clockOffset(serverNow, Date.now()) };
 }
 
-/** Whether two values read the same on a clock that shows whole seconds. */
-function sameSecond(a: number | null, b: number | null): boolean {
-  if (a === null || b === null) return a === b;
-  return Math.ceil(a / 1000) === Math.ceil(b / 1000);
-}
-
 /**
- * The room's shared timer, drawn from the server's `endsAt` on the server's clock. It never counts down on its
- * own: every frame recomputes the time left from `endsAt`, and React only re-renders when the shown second
- * changes. Starts from `initial` (the join ack; pass a new object to start over) and follows `timer:state`.
+ * The room's shared timer as the server last sent it. Starts from `initial` (the join ack; pass a new object to
+ * start over) and follows `timer:state`. It doesn't tick: pair it with useTimeLeft in the one component that
+ * draws the countdown, so the rest of the room doesn't re-render every second.
  */
-export function useRoomTimer(roomId: string, initial: TimerSnapshot): RoomTimerView {
+export function useRoomClock(roomId: string, initial: TimerSnapshot): RoomClock {
   const [clock, setClock] = useState(() => receive(initial));
-  const [remainingMs, setRemainingMs] = useState(() => timeLeftMs(clock.timer, Date.now(), clock.offset));
 
   const initialRef = useRef(initial);
   useEffect(() => {
@@ -50,20 +38,46 @@ export function useRoomTimer(roomId: string, initial: TimerSnapshot): RoomTimerV
     if (payload.roomId === roomId) setClock(receive(payload));
   });
 
+  return clock;
+}
+
+// A few ms past the boundary, so the read lands on the new second rather than just before it.
+const BOUNDARY_SLACK_MS = 5;
+
+/** How long until a clock showing whole seconds (rounded up) next changes. */
+function untilNextSecond(left: number): number {
+  return ((left - 1) % 1000) + 1 + BOUNDARY_SLACK_MS;
+}
+
+/**
+ * Milliseconds left in the phase, recomputed from `endsAt` (never counted down on its own) each time the shown
+ * second changes. Null when idle or done. Uses timers rather than animation frames so it keeps going in a
+ * background tab, where the tab title still shows the time.
+ */
+export function useTimeLeft({ timer, offset }: RoomClock): number | null {
+  const [remainingMs, setRemainingMs] = useState(() => timeLeftMs(timer, Date.now(), offset));
+
   useEffect(() => {
-    const { timer, offset } = clock;
     const read = () => timeLeftMs(timer, Date.now(), offset);
-    setRemainingMs(read());
-    if (!timer.endsAt) return;
+    const first = read();
+    // A new timer from the server (a phase change or a host command, never a tick) is drawn at once. Reading the
+    // clock can't happen during render, so this one extra render is the price.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRemainingMs(first);
+    if (!timer.endsAt || !first) return;
 
-    let frame = requestAnimationFrame(function draw() {
-      const left = read();
-      setRemainingMs((shown) => (sameSecond(shown, left) ? shown : left));
-      // At zero the server is about to send the next phase; nothing left to draw until then.
-      if (left !== 0) frame = requestAnimationFrame(draw);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [clock]);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const schedule = (left: number) => {
+      timeout = setTimeout(() => {
+        const now = read() ?? 0;
+        setRemainingMs(now);
+        // At zero the server is about to send the next phase; nothing left to draw until then.
+        if (now > 0) schedule(now);
+      }, untilNextSecond(left));
+    };
+    schedule(first);
+    return () => clearTimeout(timeout);
+  }, [timer, offset]);
 
-  return { timer: clock.timer, remainingMs };
+  return remainingMs;
 }

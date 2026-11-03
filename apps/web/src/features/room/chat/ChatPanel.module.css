@@ -26,6 +26,17 @@
   list-style: none;
 }
 
+/* "Round 2 complete · break started" (mockup .sys). */
+.sys {
+  align-self: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 4px 12px;
+  border-radius: 99px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
 .msg {
   display: flex;
   gap: 10px;
@@ -44,7 +55,7 @@
 
 .meta time {
   font-weight: 500;
-  color: var(--faint);
+  color: var(--muted);
   margin-left: 6px;
   font-size: 12px;
 }
@@ -108,8 +119,11 @@
   background: var(--surface);
 }
 
+/* The input has no outline of its own, so the whole box shows the focus ring. */
 .compose:focus-within {
   border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .input {
@@ -124,7 +138,7 @@
 }
 
 .input::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .send {

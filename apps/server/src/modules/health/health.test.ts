@@ -4,7 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../app';
 import { connectToDatabase, disconnectFromDatabase, isDatabaseConnected } from '../../db/connect';
 
-const app = createApp({ isDatabaseConnected, clientOrigin: 'http://localhost:5173' });
+let shuttingDown = false;
+const app = createApp({
+  isDatabaseConnected,
+  isShuttingDown: () => shuttingDown,
+  clientOrigin: 'http://localhost:5173',
+});
 let mongo: MongoMemoryServer;
 
 beforeAll(async () => {
@@ -17,18 +22,36 @@ afterAll(async () => {
   await mongo.stop();
 });
 
-// These run in order: connected first, then after disconnecting.
+// These run in order: connected first, then shutting down, then after disconnecting.
 describe('GET /api/health', () => {
-  it('reports the database as up when connected', async () => {
+  it('answers 200 when the database is up', async () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, db: 'up' });
   });
 
-  it('reports the database as down after it disconnects', async () => {
+  it('shows the deployed commit when there is one', async () => {
+    const released = createApp({
+      isDatabaseConnected,
+      release: 'abc123',
+      clientOrigin: 'http://localhost:5173',
+    });
+    const res = await request(released).get('/api/health');
+    expect(res.body).toEqual({ ok: true, db: 'up', release: 'abc123' });
+  });
+
+  it('answers 503 while the server is shutting down', async () => {
+    shuttingDown = true;
+    const res = await request(app).get('/api/health');
+    shuttingDown = false;
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ ok: false, db: 'up' });
+  });
+
+  it('answers 503 after the database disconnects', async () => {
     await disconnectFromDatabase();
     const res = await request(app).get('/api/health');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true, db: 'down' });
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ ok: false, db: 'down' });
   });
 });

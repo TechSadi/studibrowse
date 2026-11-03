@@ -165,6 +165,11 @@ export function isSocketInRoom(roomId: string, socketId: string): boolean {
   return roomsBySocket.get(socketId)?.has(roomId) ?? false;
 }
 
+/** The rooms someone is in, people inside their reconnect window included. */
+export function roomsOfUser(userId: string): string[] {
+  return [...rooms].filter(([, room]) => room.members.has(userId)).map(([roomId]) => roomId);
+}
+
 export function roomsOfSocket(socketId: string): string[] {
   return [...(roomsBySocket.get(socketId) ?? [])];
 }

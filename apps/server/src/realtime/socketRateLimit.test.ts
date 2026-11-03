@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createSocketRateLimiter } from './socketRateLimit';
+import { clientEventSchemas } from '@studibrowse/shared';
+import { createSocketRateLimiter, eventRateLimiters } from './socketRateLimit';
 
 function limiterWithClock(limit: number, windowMs: number) {
   const clock = { now: 0 };
@@ -42,10 +43,26 @@ describe('createSocketRateLimiter', () => {
     expect(limiter.consume('a')).toBe(false);
   });
 
-  it('starts a forgotten key from zero', () => {
-    const { limiter } = limiterWithClock(1, 1000);
+  it('drops keys whose hits have all left the window, but keeps one still limited', () => {
+    const { limiter, clock } = limiterWithClock(1, 1000);
     limiter.consume('a');
-    limiter.forget('a');
-    expect(limiter.consume('a')).toBe(true);
+    clock.now = 500;
+    limiter.consume('b');
+    clock.now = 1200;
+    // 'a' is stale and goes; 'b' still has a hit in the window, so it stays blocked.
+    expect(limiter.consume('b')).toBe(false);
+    expect(limiter.size()).toBe(1);
+  });
+});
+
+describe('eventRateLimiters', () => {
+  it('limits every client event', () => {
+    expect(Object.keys(eventRateLimiters).sort()).toEqual(Object.keys(clientEventSchemas).sort());
+  });
+
+  it('gives the four timer commands one shared budget', () => {
+    expect(eventRateLimiters['timer:start']).toBe(eventRateLimiters['timer:pause']);
+    expect(eventRateLimiters['timer:start']).toBe(eventRateLimiters['timer:skip']);
+    expect(eventRateLimiters['timer:start']).toBe(eventRateLimiters['timer:reset']);
   });
 });

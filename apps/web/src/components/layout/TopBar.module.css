@@ -55,7 +55,7 @@
 }
 
 .search input::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .search input::-webkit-search-cancel-button {

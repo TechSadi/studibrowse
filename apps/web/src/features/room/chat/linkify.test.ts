@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitLinks } from './linkify';
+import { isWebUrl, splitLinks } from './linkify';
 
 const link = (text: string, href = text) => ({ type: 'link', text, href });
 const text = (value: string) => ({ type: 'text', text: value });
@@ -68,4 +68,17 @@ describe('splitLinks', () => {
   it('skips matches that are not real URLs', () => {
     expect(splitLinks('https://')).toEqual([text('https://')]);
   });
+});
+
+describe('isWebUrl', () => {
+  it.each(['https://example.com/notes.pdf', 'http://example.com'])('accepts %s', (url) => {
+    expect(isWebUrl(url)).toBe(true);
+  });
+
+  it.each(['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,hi', 'https://', 'not a url', ''])(
+    'rejects %j',
+    (url) => {
+      expect(isWebUrl(url)).toBe(false);
+    },
+  );
 });

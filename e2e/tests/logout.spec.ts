@@ -8,7 +8,7 @@ test('logging out returns to Welcome and ends the session', async ({ page }) => 
   await page.goto('/settings');
   await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Log out' }).click();
+  await page.getByRole('button', { name: 'Log out', exact: true }).click();
 
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('heading', { level: 1, name: 'Study with people, not alone.' })).toBeVisible();

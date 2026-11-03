@@ -22,9 +22,10 @@ For things requested once: auth, profiles, room lists, history.
 
 ```
 web (TanStack Query → fetch /api/...)
-  → Vite proxy (dev) / same origin (prod)
-  → Express: request logger → helmet → CORS → JSON body (100 kB) → cookies
-             (the password, email and Google auth endpoints are also rate limited)
+  → Vite proxy (dev) / Vercel rewrite /api/* → Render (prod; same origin for the browser)
+  → Express: trust proxy (TRUST_PROXY) → request logger → helmet → CORS → JSON body (100 kB) → cookies
+             (auth endpoints per IP and per account; room creation, follows, profile saves and
+              upload signing per person; username checks and invite previews per IP)
   → router (modules/<feature>/*.routes.ts)  validates input with the shared zod schema
   → controller                              reads req, calls the service, writes res
   → service                                 business logic + Mongoose; never sees req/res
@@ -39,12 +40,15 @@ Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `A
 For everything live inside a room, for notifications, and for the lobby (the live list of public rooms on Home).
 
 ```
-web: io({ auth: (cb) => cb({ token: <access token> }) })      (src/lib/socket.ts, opened after login)
+web: io(VITE_API_URL, { auth: (cb) => cb({ token: <access token> }) })   (src/lib/socket.ts, after login)
+     (dev: same origin through the Vite proxy; prod: straight to Render, since Vercel can't proxy WebSockets)
   → io.use(socketAuth): verify the JWT, set socket.data.userId    (realtime/socketAuth.ts)
+  → io.use: refuse a 21st open socket for the same user (MAX_SOCKETS_PER_USER, RATE_LIMITED)
+  → payloads over 32 KB drop the connection (maxHttpBufferSize)
   → on connection: join private room `user:<id>`, add each feature's handlers   (realtime/io.ts)
   → client emits an event (e.g. timer:start) with an ack callback
   → onEvent wrapper (realtime/handler.ts):
-             1. per-socket rate limit, if the event has one
+             1. per-user rate limit (every event has one)
              2. validate payload with the shared zod schema (clientEventSchemas)
              3. handler: check permissions (member of the room? host?), call the service (same services as REST)
              4. ack { ok: true, data }, broadcast the result to `room:<roomId>`
@@ -54,7 +58,7 @@ A handler that fails validation or a permission check acks `{ ok: false, error: 
 
 - **Handshake errors** reach the client as `connect_error` with `err.data = { code, message }`: `UNAUTHENTICATED` or `TOKEN_EXPIRED`.
 - **Handlers** are registered per feature: `createIo(httpServer, { clientOrigin, registerHandlers })` takes a list of `(io, socket) => void` registrars: the room handlers (`realtime/handlers/room.handlers.ts`), the timer handlers (`realtime/handlers/timer.handlers.ts`), the chat handlers (`realtime/handlers/chat.handlers.ts`), the goal handlers (`realtime/handlers/goal.handlers.ts`) and the room settings handler (`realtime/handlers/settings.handlers.ts`). Tests pass their own.
-- **Rate limits** (`realtime/socketRateLimit.ts`, sliding window, in memory, per socket id, cleared on disconnect): `chat:send` 5 per 5 seconds (acks `RATE_LIMITED`), `chat:typing` 10 per 5 seconds (dropped).
+- **Rate limits** (`realtime/socketRateLimit.ts`, sliding window, in memory, **per user id**, so every tab and device shares one budget and reconnecting doesn't reset it; stale keys are pruned as it runs). Every client event has one; the values are in `docs/SOCKET-EVENTS.md` › Rate limits. Over the limit an event acks `RATE_LIMITED` (`chat:typing` is dropped).
 - **Chat** (`realtime/handlers/chat.handlers.ts`, `modules/chat/chat.service.ts`): `chat:send` checks the socket is in the room, saves the message, then sends `chat:new` to the whole room, sender included, so their other tabs stay in step. `chat:typing` is relayed to the rest of the room and never stored. Clients send `isTyping: true` at most every `TYPING_THROTTLE_MS` (2 s) while the draft isn't empty, and `false` when it's cleared, sent or the room is left; receivers stop showing someone `TYPING_CLEAR_MS` (3 s) after their last event, or as soon as their message arrives. On the web, `features/room/chat/` renders messages as React text (never as HTML) and turns only http(s) and `www.` links into `<a target="_blank" rel="noopener noreferrer">` (`linkify.ts`).
 - **Goals** (`realtime/handlers/goal.handlers.ts`, `modules/goals/goals.service.ts`): goals live on the room document. Every `goal:*` handler checks the socket is in the room, then changes the goals with one atomic update and sends `goal:update` with the full list to the whole room. `goal:add` refuses an 11th goal (`GOAL_LIMIT`) or a duplicate text (`GOAL_EXISTS`, because Room settings matches goals by text) in the update's filter, so racing adds can't get past the limit. Anyone in the room can tick a goal. Only its author or the current host (from presence, checked on every call) can remove it. On the web, `features/room/goals/useRoomGoals.ts` lays your unacknowledged changes over the latest `goal:update` (`pendingGoals.ts`), so they show at once. Dropping a change when its ack arrives is also the rollback when the server refuses it.
 - **Tests** use `test/socketHelpers.ts`: `startSocketServer()` runs the real server on a random port, and `connectUsers(n)` saves users and connects an authenticated socket.io-client for each.
@@ -66,7 +70,7 @@ Built in Phase 1 (`modules/auth`, `modules/users`). Two tokens:
 - **Access token:** a JWT (HS256, `ACCESS_TOKEN_TTL_SECONDS`, 15 minutes by default) whose `sub` is the user id. The web app keeps it in memory only, never in localStorage. It is sent as a Bearer header on REST calls and in the socket handshake.
 - **Refresh token:** 32 random bytes in the `sb_refresh` cookie (`httpOnly`, `Secure`, `SameSite=Lax`, path `/api/auth`). The server stores only its SHA-256 hash in the `refreshtokens` collection (`userId`, `familyId`, `tokenHash`, `persistent`, `expiresAt` with a TTL index, `usedAt`), so it can be revoked. It lasts `REFRESH_TOKEN_TTL_DAYS` (30 by default) from the last refresh.
 
-Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails are stored lowercased, so their unique indexes are case-insensitive. Users leave the server only through `toPublicUser()` (`modules/users/user.serializer.ts`), which copies an explicit list of fields; `passwordHash` is also `select: false` on the model.
+Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). `passwordChangedAt` is set at sign-up and on every reset, and removed with the password when Google is linked. `toPublicUser()` sends `hasPassword` (`!googleId || passwordChangedAt`, worked out without reading the hash: only linking Google removes a password), `googleLinked` and `passwordChangedAt`, for Settings. Usernames and emails are stored lowercased, so their unique indexes are case-insensitive. Users leave the server only through `toPublicUser()` (`modules/users/user.serializer.ts`), which copies an explicit list of fields; `passwordHash` is also `select: false` on the model.
 
 | Endpoint | Does | Errors |
 | --- | --- | --- |
@@ -74,20 +78,27 @@ Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails 
 | `POST /api/auth/login` | `identifier` is an email if it contains `@`, otherwise a username (shared `loginSchema`) | 401 `INVALID_CREDENTIALS` (same for unknown accounts, wrong passwords and Google-only accounts) |
 | `POST /api/auth/refresh` | Rotates the cookie, returns `{ accessToken, user }` | 401 `UNAUTHENTICATED`, 401 `REFRESH_TOKEN_REUSED`; the cookie is cleared on any failure |
 | `POST /api/auth/logout` | Deletes the session's tokens and clears the cookie (204, also without a cookie) | none |
+| `POST /api/auth/logout-all` | Signed in. Deletes every refresh token of the account (every device, this one included) and clears the cookie (204). Access tokens already issued work until they expire (15 minutes at most), as after a reset | 401 |
 | `GET /api/auth/me` | `{ user }` for the access token | 401 `UNAUTHENTICATED`, 401 `TOKEN_EXPIRED` |
 | `POST /api/auth/forgot` | Emails a reset link if an account uses the email (shared `forgotPasswordSchema`). Always 200 `{ ok: true }` | 400 `VALIDATION_ERROR`, 429 `RATE_LIMITED` |
 | `POST /api/auth/reset` | Sets a new password from a reset link and signs the account out everywhere (204) (shared `resetPasswordSchema`) | 400 `RESET_TOKEN_INVALID` (unknown, used or expired) |
 | `POST /api/auth/google` | Verifies a Google ID token, then signs in, links or creates the account. Sets the cookie, returns `{ accessToken, user }`: 201 for a new account, 200 otherwise (shared `googleAuthSchema`) | 401 `GOOGLE_TOKEN_INVALID`, 409 `GOOGLE_ACCOUNT_CONFLICT`, 503 `GOOGLE_NOT_CONFIGURED` |
 | `GET /api/users/username-available?u=` | `{ available }`, for the live check on Sign up | 400 `VALIDATION_ERROR` |
-| `PATCH /api/users/me` | Updates your own profile and settings (shared `updateMeSchema`: `avatarColor`, `studying`, `subjects`, `weeklyGoalMins`, `timerDefaults` merged per field, `timeZone` (an IANA zone `Intl` knows, such as `Europe/London`, or `UTC`), and `onboarded: true`, which sets `onboardedAt` the first time only). Strict: unknown fields such as `email` are rejected. Returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
+| `PATCH /api/users/me` | Updates your own profile and settings (shared `updateMeSchema`: `name`, `username` (409 `USERNAME_TAKEN` if someone else has it, including a duplicate-key race, mapped by `modules/users/duplicateKey.ts`), `avatarColor`, `studying`, `subjects`, `weeklyGoalMins`, `timerDefaults` merged per field, `timeZone` (an IANA zone `Intl` knows, such as `Europe/London`, or `UTC`), `privacy` (`showStudying`, `showStats`) and `notificationPrefs` (`roomOpened`, `roomFull`, `memberJoined`, `roundEnded`) merged per field, and `onboarded: true`, which sets `onboardedAt` the first time only). Strict: unknown fields such as `email` and `password` are rejected. Returns `{ user }` | 400 `VALIDATION_ERROR`, 401, 409 `USERNAME_TAKEN` |
+| `PATCH /api/users/me/email` | Changes the sign-in email (shared `changeEmailSchema`: `email`, `password`). The current password is checked with bcrypt; wrong guesses are limited to 10 per account per 15 minutes (`PASSWORD_CHECK_RATE_LIMIT`, failures only). A Google-linked account's email belongs to Google (linking by email depends on it), so it can't be changed. Returns `{ user }` | 400 `WRONG_PASSWORD` (also for accounts without a password), 400 `EMAIL_MANAGED_BY_GOOGLE`, 409 `EMAIL_TAKEN`, 429 `RATE_LIMITED`, 401 |
+| `DELETE /api/users/me` | Deletes your account (shared `deleteAccountSchema`: `username`, which must be yours; trimmed and any case). See Account deletion below. Clears the cookie, 204 | 400 `CONFIRMATION_MISMATCH`, 401 |
 | `GET /api/users/me/following` | `{ users }`: the people you follow, in the order you followed them, for the sidebar. Each is a `FollowedUser` (`toFollowedUser()`: id, name, username, avatarColor). Deleted accounts are left out | 401 |
 | `GET /api/users/suggestions` | `{ users }`: up to 5 people for onboarding's Follow step, the most recently active first (`lastStudiedAt`, then `updatedAt`). Only people who finished onboarding, never you. Each is a `SuggestedUser` (`toSuggestedUser()`: no email or settings) | 401 |
 | `POST /api/users/:id/follow` | Adds the person to your `following` (idempotent), returns `{ user }` | 400 `VALIDATION_ERROR` (bad id), 400 `CANNOT_FOLLOW_SELF`, 404 `USER_NOT_FOUND`, 401 |
 | `DELETE /api/users/:id/follow` | Removes the person from your `following` (idempotent, also for deleted accounts), returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
+| `GET /api/users/:username` | `{ profile }`: someone's profile as you see it (`UserProfile`, see Profiles below). Registered after the fixed `/api/users/*` paths, so `/suggestions` and `/me/following` still match those | 400 `VALIDATION_ERROR` (bad username), 404 `USER_NOT_FOUND` (unknown, or hasn't finished onboarding), 401 |
+| `GET /api/users/:username/followers?cursor=&limit=` | `{ users, nextCursor }`: the people who follow them, newest accounts first, 20 a page (shared `followListQuerySchema`). Each is a `FollowListUser` (`toFollowListUser()`: id, name, username, avatarColor, `studying` unless hidden, `isFollowing` for you) | 400 `VALIDATION_ERROR` (bad cursor), 404 `USER_NOT_FOUND`, 401 |
+| `GET /api/users/:username/following?cursor=&limit=` | Same shape: the people they follow, the most recently followed first. Deleted accounts are left out, so a page can come back short | 400 `VALIDATION_ERROR`, 404 `USER_NOT_FOUND`, 401 |
 
-Rate limits (`middleware/rateLimit.ts`, in memory):
+Rate limits (`middleware/rateLimit.ts`, in memory). Per-IP limits key on `req.ip`, which is only the visitor's address when `TRUST_PROXY` matches the proxies in front of the server (2 in production: Vercel, then Render). See `docs/decisions/security.md`.
 
-- **Per IP:** 20 requests per 15 minutes, shared by signup, login, forgot, reset and google. Refresh and `/me` aren't limited because they run on every page load.
+- **Per IP:** 20 requests per 15 minutes, shared by signup, login, forgot, reset and google. Refresh and `/me` aren't limited because they run on every page load. Also per IP: `GET /api/users/username-available` 120 per 15 minutes, `GET /api/rooms/invite/:code` 60 per 15 minutes.
+- **Per person** (after `requireAuth`, `createUserRateLimiter`): `POST /api/rooms` 10 per 15 minutes (each public room notifies every follower), follow and unfollow together 60 per 15 minutes, `PATCH /api/users/me` 60 per 15 minutes, upload signing 30 per 15 minutes.
 - **Per account:** login allows 10 *failed* attempts per identifier per 15 minutes, and forgot allows 3 requests per email per hour. These limiters key on the normalised body, so they run after validation. Any string counts the same whether or not an account uses it, so a 429 reveals nothing. The trade-off: someone can block password login for an account for 15 minutes. Google sign-in and password reset still work for its owner.
 
 ### Password reset
@@ -125,19 +136,44 @@ Because each refresh token works exactly once, two tabs refreshing with the same
 - **Token storage:** `src/lib/api.ts` keeps the access token in a module variable, in memory only (never localStorage). All requests go through its `request()`, and the typed `authApi` / `usersApi` wrap the endpoints.
 - **One refresh at a time:** `refreshSession()` is single-flight inside a tab (concurrent callers share one promise, which also covers React StrictMode running the startup effect twice). Across tabs it runs inside a Web Lock (`navigator.locks`, name `sb-refresh`), so tabs refresh one after another and each sends the newest cookie.
 - **Expired tokens:** an authenticated call that gets 401 `TOKEN_EXPIRED` refreshes once and retries once. If that refresh fails, the session ends and the app treats the user as signed out.
-- **Socket:** `src/lib/socket.ts` holds one socket per tab, opened by `AuthContext` when the user is signed in and closed when they aren't. Its `auth` option is a function, so every reconnect sends the current access token. On `TOKEN_EXPIRED` it calls `refreshSession()` and reconnects; if the refresh is refused, or the token is expired again right after a refresh, or the server says `UNAUTHENTICATED`, it ends the session through `endSession()` in `api.ts`, the same path REST uses. A refresh that can't reach the server is retried after 5 seconds. `emitWithAck()` resolves with the ack data or throws `ApiError` (status 0, the server's code, or `NETWORK_ERROR` after 10 seconds without an answer). `hooks/useSocket.ts` exposes `useSocket()` (`{ socket, status }`) and `useSocketEvent(event, handler)`.
+- **Socket:** `src/lib/socket.ts` holds one socket per tab, opened by `AuthContext` when the user is signed in and closed when they aren't. It loads `socket.io-client` with a dynamic `import()` the first time it connects, so signed-out pages never download it; `connectSocket()` resolves with the socket (or null if `disconnectSocket()` ran while the library loaded). Its `auth` option is a function, so every reconnect sends the current access token. On `TOKEN_EXPIRED` it calls `refreshSession()` and reconnects; if the refresh is refused, or the token is expired again right after a refresh, or the server says `UNAUTHENTICATED`, it ends the session through `endSession()` in `api.ts`, the same path REST uses. A refresh that can't reach the server is retried after 5 seconds. `emitWithAck()` resolves with the ack data or throws `ApiError` (status 0, the server's code, or `NETWORK_ERROR` after 10 seconds without an answer). `hooks/useSocket.ts` exposes `useSocket()` (`{ socket, status }`) and `useSocketEvent(event, handler)`.
 - **Connection status:** `connecting` (first attempt), `connected`, `reconnecting` (after a drop or a failed first attempt) or `offline` (`navigator.onLine`). `components/ui/ConnectionStatus.tsx` shows a pill in the top bar and phone header only for `reconnecting` (amber) and `offline` (grey); it isn't in the mockup, so it reuses the live pill's shape.
 - **Session state:** `features/auth/AuthContext.tsx` restores the session on load (`loading` → `signedIn` or `signedOut`) and exposes `signIn`, `setUser` (swap in the `user` a profile or follow request returned) and `logout`. Once signed in, if the browser's time zone (`Intl.DateTimeFormat().resolvedOptions().timeZone`) differs from the user's saved `timeZone`, it saves it with `PATCH /api/users/me`, because the server counts streak days in it. A failure is ignored until the next load.
 - **Route guards** (`features/auth/guards.tsx`):
   - `PublicOnlyRoute` wraps `/`, `/signup`, `/login` and `/forgot-password`. Signed-in users go to `resolveSignedInPath(user, next)`: `/onboarding` until `onboardedAt` is set, otherwise the `?next=` path (same-site paths only) or `/home`.
   - `RequireAuth` sends signed-out visitors to `/login?next=…`, or to `/` right after they log out.
   - Inside it, `RequireOnboarded` wraps the app pages (`/home`, `/progress`, `/notifications`, `/settings`, `/u/:username` and `/room/:roomId`) and sends accounts without `onboardedAt` to `/onboarding?next=…`. `OnboardingRoute` wraps `/onboarding` and sends finished accounts on to `next` or `/home`. Finishing onboarding is just `setUser` with the new `onboardedAt`: the guard does the redirect.
-- **Routes** live in `src/app/routes.tsx` (tests mount the same table in a memory router).
+- **Routes** live in `src/app/routes.tsx` (tests mount the same table in a memory router). Every page except Welcome is a lazy route (React Router `lazy`), so each page, the focus room included, is its own chunk; the guards and the app shell stay in the main bundle. `RouteFallback` (a screen-reader status) shows while the first page's code downloads.
 - **App shell** (`components/layout/AppShell.tsx`): the layout route for every signed-in page except the focus room. Sidebar (264px; an 80px icon rail from 768 to 1100px) with the menu, People you follow (`GET /api/users/me/following`, refetched when `user.following` changes), the streak card (from the progress summary, see Progress below; `lib/streak.ts` turns it into the seven dots, and falls back to the user's saved `streak` and `lastStudiedAt` if the summary can't load) and your profile. Below 768px the sidebar becomes a bottom tab bar (Home, Create, Progress, Settings) and a slim header. Each route's `handle.crumb` names the page in the top bar's breadcrumb and the tab title. The top-bar search filters Home's live rooms through the `?q=` param (`/` focuses it). Create a room opens through `/home?create=1` (`features/home/useCreateRoomDialog.ts`).
 - **Onboarding** (`features/onboarding/`): each Continue saves that step's answers with `PATCH /api/users/me`; follows are saved on click. The current step is kept in localStorage (`sb-onboarding:<userId>`), so a refresh reopens it with the saved answers. "Skip for now" and "Start studying" both send `onboarded: true`.
   - `/reset-password` and `/r/:inviteCode` work in either state. Any other path shows the 404 page.
 - **Reset links:** the page reads the token from the URL fragment (`#token=…`) and then removes it from the address bar.
 - **Google sign-in:** the web app renders Google's own button with Google Identity Services, with the same `GOOGLE_CLIENT_ID` from the repo-root `.env`: `vite.config.ts` passes it to the browser as `VITE_GOOGLE_CLIENT_ID` (a client id is public), unless `VITE_GOOGLE_CLIENT_ID` is set to override it. Only `src/lib/config.ts` reads it. Without a client id the button shows as unavailable.
+
+### Account deletion (`modules/users/accountDeletion.service.ts`)
+
+`DELETE /api/users/me` checks the typed username, then, in this order:
+
+1. deletes the refresh tokens and reset tokens (every device is signed out)
+2. takes the account out of everyone's `following` (`$pull`)
+3. deletes the notifications it received
+4. anonymises its chat messages: `userId` becomes null, the text stays, and rooms show "Deleted account"
+5. deletes the user
+
+The user goes last, so a failure part-way can be retried. Kept: study sessions (the spec keeps the session log in everyone's history), resources it shared (deleted with their rooms), and rooms it hosts, which drop out of every list once the host is gone. Then `createApp`'s `onAccountDeleted` (wired in `index.ts`) disconnects every socket in `user:<id>`. The usual reconnect window then takes the person out of their rooms and hands the host role on, and they can't rejoin because `loadMemberProfile` refuses a missing user. As with a reset, an access token already issued works until it expires (15 minutes at most), but every endpoint that reads the user then answers 401.
+
+## Settings (web, `features/settings/`)
+
+`/settings` (mockup `#settings`). Everything comes from the signed-in user in `AuthContext`, so the page has no loading state of its own.
+
+- **Layout:** `SettingsPage.tsx` has the side nav (a click scrolls to the section, smoothly unless reduced motion is on, and moves focus to it; a horizontal scroller below 980px) and six sections built from `SettingsLayout.tsx` (`SettingsSection`, `SettingRow`, `SwitchRow`).
+- **Saving:** `useSaveMe()` checks the change with the shared `updateMeSchema`, sends `PATCH /api/users/me`, swaps in the returned user with `setUser`, and shows the saved toast (an error toast on failure). Switches flip at once and flip back if the save fails. The timer steppers save 600 ms after the last click (`TIMER_SAVE_DELAY_MS`), or straight away if you leave the page first, so a burst of clicks is one request and one toast.
+- **Account:** "Change colour" opens the onboarding `ColorSwatches`, and a pick saves at once. Name, username (live check through `useUsernameAvailability` when it's not your own), email and Bio (`studying`) save with Save changes. A new email opens `ConfirmPasswordDialog`, which sends `PATCH /api/users/me/email`. A Google-linked account's email is read-only. "Change password" emails a reset link through `POST /api/auth/forgot`. There's no photo upload (no profile photos in v1).
+- **Appearance:** the System / Light / Dark radiogroup calls `useTheme().choose`, which saves `sb-theme` and sets `data-theme`.
+- **Notifications** (the four `notificationPrefs`) and **Privacy** (`showStudying`, `showStats`): switches.
+- **Timer defaults:** Focus, Short break and Rounds, plus the weekly goal in whole hours (1 to 40).
+- **Log out and delete:** Log out (`LogoutButton`); Log out of all devices (`ConfirmDialog`, then `AuthContext.logoutAll()`); Delete account (`DeleteAccountDialog`: the button stays disabled until the typed text matches the username the way the server compares it, then `endAfterDeletion()` signs out locally and the guards show Welcome).
+- Tests: `SettingsPage.test.tsx`, `e2e/tests/settings.spec.ts`.
 
 ## Rooms (`modules/rooms/`)
 
@@ -161,7 +197,7 @@ Endpoints (all bodies, queries and params are validated with the shared zod sche
 
 ## Lobby: the live room list
 
-Pages that list public rooms (Home now, Profile later) join the Socket.IO room `lobby` with `lobby:subscribe` and leave with `lobby:unsubscribe`. Events are in `docs/SOCKET-EVENTS.md` › Lobby.
+Pages that list public rooms (Home, and Profile for its Hosting now card) join the Socket.IO room `lobby` with `lobby:subscribe` and leave with `lobby:unsubscribe`. Events are in `docs/SOCKET-EVENTS.md` › Lobby.
 
 - **Server:** `realtime/lobby.ts` holds `broadcastRoomCard(io, roomId)`, the one way a card reaches the lobby. It is called on every change a card shows:
   - the room created (`POST /api/rooms`, through `createApp`'s `onRoomCreated`)
@@ -200,7 +236,7 @@ A room stores `timer { phase, round, endsAt, pausedRemaining }`. `phase` is `idl
 - **Restarts:** timers live in MongoDB, so on the first database connection `restore()` reschedules every open room whose timer is running. A timer that ended while the server was down fires at once and catches up through every phase it missed.
 - **Statuses follow the phase:** when the phase changes, every member who isn't Away becomes Focusing (focus) or Break (anything else), with `focusingSince` set to when the phase began, and the room gets `presence:update`. Pausing doesn't change anyone's status.
 - **Focus credit:** see Sessions below.
-- **Client clock:** `room:join` and `timer:state` both carry `serverNow`. `useRoomTimer(roomId, { timer, serverNow })` (`apps/web/src/features/room/useRoomTimer.ts`) keeps `clockOffset = serverNow − Date.now()` and, while running, recomputes `endsAt − (Date.now() + clockOffset)` (`roomClock.ts`) every animation frame, re-rendering only when the shown second changes. It never counts down on its own.
+- **Client clock:** `room:join` and `timer:state` both carry `serverNow`. `useRoomClock(roomId, { timer, serverNow })` (`apps/web/src/features/room/useRoomTimer.ts`) keeps the server timer and `clockOffset = serverNow − Date.now()`; it changes only when the server sends something. `useTimeLeft(clock)` recomputes `endsAt − (Date.now() + clockOffset)` (`roomClock.ts`) with a timeout set for the moment the shown second changes (timers, not animation frames, so the tab title keeps counting in a background tab). It never counts down on its own. Only `TimerStage` calls `useTimeLeft`, so the rest of the focus room doesn't re-render every second.
 - The phase and round maths live in pure functions (`realtime/timer.ts`) with unit tests (`timer.test.ts`, fake clock).
 
 ## Sessions (`modules/sessions/`)
@@ -237,25 +273,64 @@ Indexes: `{ participants.userId, startedAt: -1 }` for weeks and the summary, `{ 
 - **Web** (`features/progress/`): `queries.ts` holds `useProgressSummary()` (one query, key `['progress', 'summary', 'week']`, shared by the sidebar, Home and Progress) and `useMySessions(cursor, limit)` (Home asks for `RECENT_SESSIONS_COUNT`, Progress pages with Newer/Older, keeping a stack of visited cursors). The session summary dialog calls `invalidateProgress` once it loads, so everything refreshes after a session. `FocusByDayChart.tsx` draws the bars as SVG at the container's measured width (`hooks/useElementWidth.ts`), as one `role="img"` with a `<desc>` listing every day. Day keys from the server are formatted in UTC so the browser's zone can't shift them (`format.ts`).
 - Tests: `progress.service.test.ts` (zones, the DST change, distinct people and rooms, streak), `progress.test.ts`, history paging in `modules/sessions/sessions.test.ts`, and `e2e/tests/progress.spec.ts`.
 
+## Profiles and following (`modules/users/`, web `features/profile/`, `features/follows/`)
+
+- **Following** is the `following` array on each user; followers are found with `User.find({ following: id })` (indexed). There is no separate follows collection.
+- **Privacy** (`user.privacy`, Settings › Privacy): `showStudying` hides your "what are you studying" line from profiles, suggestions and people lists; `showStats` hides the profile's three stats. Both default to true. Your own profile always shows you everything.
+- **`GET /api/users/:username`** (`profile.service.ts`) builds a `UserProfile`:
+  - follower and following counts (deleted accounts don't count), `isFollowing`, `isMe`, `joinedAt` (`createdAt`).
+  - `stats` (null when hidden): focus minutes this calendar month in their time zone (a Session aggregate), the current streak (`displayedStreak()` in `sessions/streak.ts`, 0 once lapsed, shared with Progress) and rooms hosted (`Room.countDocuments({ hostId })`).
+  - `hostingNow`: the newest open room they host that someone is in, as a `RoomSummary`, **only if it is public, or you are its host or in it**.
+  - `recentRooms`: their latest sessions, one row per room, up to 5. A room that is private now is only listed for people who were in that session (and for themselves).
+  - `studiedTogether`: different rooms you both focused in (null on your own profile).
+- **Web:** `ProfilePage` (mockup `#profile`) loads `['people', 'profile', username]`. The follower and following counts open `FollowListModal`, a `useInfiniteQuery` with Show more. Share uses `navigator.share` where there is one, otherwise copies `<origin>/u/:username` and shows "Profile link copied". The page holds the lobby and reloads itself on a `rooms:upsert` for a room this person hosts, a `rooms:remove` for its Hosting now room, or a `follows:live` about them.
+- **Follow buttons** (profile, followers lists, onboarding, Room closed) all use `features/follows/useFollowToggle.ts`: it calls the follow endpoint, swaps in the returned user with `setUser`, reloads everything under `['people']`, and shows the "Following" toast.
+- **Live dots** in the sidebar's People you follow: `features/follows/useFollowLive.ts` sends `follows:watch` on every connect and whenever `user.following` changes, then applies `follows:live`. A live person's row links to their room ("Hosting … Click to join."), otherwise to their profile. Only **public** rooms light the dot (see `docs/SOCKET-EVENTS.md` › Following).
+
+## Notifications (`modules/notifications/`, web `features/notifications/`)
+
+- **Sender** (`createNotificationSender({ emit })` in `notifications.service.ts`): saves to the `notifications` collection, then `emit`s `notification:new` to `user:<id>` (wired in `index.ts`). Who gets what:
+
+  | Type | Trigger | Recipients |
+  | --- | --- | --- |
+  | `roomStarted` | `POST /api/rooms` (`onRoomCreated`) | The host's followers. **Public rooms only**: followers can't see a private room, so nobody hears about one |
+  | `memberJoined` | `room:join` brings in someone new (`onJoined` in `room.handlers.ts`; not another tab) | The room's current host (from presence), never the joiner |
+  | `roomFull` | The same join leaves the room at `maxSize` | The current host. Not again for that room within 10 minutes (`ROOM_FULL_GROUP_WINDOW_MS`) |
+  | `roundEnded` | A focus phase ran out or was skipped (`onRoundEnded` in `roomTimer.ts`; once after an outage's catch-up) | Everyone in the room |
+
+  Each type is skipped for anyone whose matching `notificationPrefs` toggle is off (`NOTIFICATION_PREF_BY_TYPE`), and every recipient must pass `canSeeRoom` (public, or they host it or are in it). Triggers are fire-and-forget: a failure is logged and never holds up the join, the timer or the request.
+- **Grouping:** joins to the same room within a minute (`NOTIFICATION_GROUP_WINDOW_MS`, from the first one) update one unread notification ("Maya Kapoor and 4 others joined your room"), behind a per-host-and-room lock. Each update moves it to the top (`createdAt` = now) and is sent again **with the same id**, so clients replace it. Someone rejoining inside the window isn't counted twice. Internal fields (`actorIds`, `actorName`, `groupStartedAt`, `round`) are never serialised.
+- **REST** (`notifications.routes.ts`, all signed in):
+  - `GET /api/notifications?filter=all|unread|rooms&cursor=&limit=` answers `NotificationsResponse`: newest first, `rooms` meaning `roomStarted`. The opaque cursor is `(createdAt, _id)` (`notificationCursor.ts`). Each item adds `roomOpen` (the room hasn't closed) so Join can be hidden.
+  - `GET /api/notifications/unread-count` answers `{ count }`.
+  - `POST /api/notifications/read` takes `{ id }` or `{ all: true }` and answers the new `{ count }`. Someone else's id is a 404 `NOTIFICATION_NOT_FOUND`, the same as a missing one.
+- **Web:** `NotificationListener` (mounted in `RequireOnboarded`, so the focus room has it too) applies `notification:new` to every cached list (`['notifications', 'list', filter]`, upsert by id) and refetches the unread count. `NotificationBell` is the trigger and dropdown in the top bar, the phone header and the sidebar (with the count). `NotificationsPage` has the All / Unread / Rooms opened tabs (`?filter=`), Today and Earlier (local midnight), and Show older. Opening one marks it read; an open room alert joins the room.
+- **Browser notifications** (`lib/browserNotifications.ts`): permission is only requested from the Enable button on the Notifications page or the dropdown, never on load. "Not now" is remembered as `sb-notif-prompt-dismissed`. One is shown only when permission is granted **and the tab is hidden**, tagged with the notification id so a growing burst replaces itself.
+
 ## Room lifecycle
 
 ```
 open ──last socket leaves──▶ empty (emptySince = now) ──5 min, nobody back──▶ closed (closedAt = now)
-  ▲                               │
+  ▲  │                            │
+  │  └──host closes it (room:close)───────────────────────────────────────────▶ closed
   └────────someone joins──────────┘  (emptySince = null)
 ```
 
 - **Presence** (`realtime/presence.ts`) is in memory, keyed by room and then user, with every socket (tab) each user has there. It holds each member's profile, `joinedAt`, status, "working on" note and `focusingSince`, plus the room's `maxSize` and current host. It has no timers and no database; the room handlers (`realtime/handlers/room.handlers.ts`) drive it and broadcast `presence:update` on every change.
-- **Joining:** `room:join` checks the room exists and isn't closed, that you may join (public; private with the invite code; or you're the host or already in it), and that it has space. Seats are counted by person: a second tab of someone already in never counts. The check and the add run with no `await` between them, so two people can't take the last seat together. A newcomer's status follows the timer phase (focus → Focusing, breaks → Break).
+- **Joining:** `room:join` checks the room exists and isn't closed, that the host hasn't removed you (`removedUserIds` on the room; `REMOVED_FROM_ROOM`, even with the invite code), that you may join (public; private with the invite code; or you're the host or already in it), and that it has space. Seats are counted by person: a second tab of someone already in never counts. The check and the add run with no `await` between them, so two people can't take the last seat together. A newcomer's status follows the timer phase (focus → Focusing, breaks → Break).
 - **Leaving vs disconnecting:** `room:leave` removes you at once (once all your tabs in that room have left). A disconnect is not a leave: when your last socket drops you keep your place, your `joinedAt` and your status for `RECONNECT_GRACE_MS` (30 seconds), and only then are you removed and the room told. A rejoin inside that window cancels the removal.
-- **Host handover:** when the host leaves for good (leave, or their reconnect window runs out), the member who has been there longest becomes host, in presence and in the database (`hostId`), and `presence:update` carries the new `isHost`.
+- **Host handover:** when the host leaves for good (leave, or their reconnect window runs out), the member who has been there longest becomes host, in presence and in the database (`hostId`), and `presence:update` carries the new `isHost`. The host can also hand it to anyone in the room with `host:transfer`.
 - **Open:** at least one member is in the room. At most `maxSize` (2 to 20) people.
 - **Empty:** the last socket left or disconnected. `emptySince` is set straight away, but the room and its timer stay as they are, so a refresh or dropped connection doesn't end it.
 - **Grace:** `ROOM_GRACE_MS` (5 minutes). Anyone who joins in that time clears `emptySince` and the room carries on.
-- **Closed:** `jobs/roomCleanup.ts` runs every 30 seconds and closes rooms whose `emptySince` is older than the grace period and that have nobody in presence (someone inside a reconnect window still counts): it logs a run that was still going (see Sessions), sets `closedAt`, empties the goals and deletes their messages, resources and stored files (the room's whole storage folder, so uploads that were never shared go too; a storage failure is logged and doesn't stop the rest). The room document stays so invite links can show the Room closed page. Sessions stay in each person's history. The host can also close a room straight away. Because presence is lost on a restart, the job first gives every open room with `emptySince: null` a fresh grace period.
+- **Closed:** `jobs/roomCleanup.ts` runs every 30 seconds and closes rooms whose `emptySince` is older than the grace period and that have nobody in presence (someone inside a reconnect window still counts): it logs a run that was still going (see Sessions), sets `closedAt`, empties the goals and deletes their messages, resources and stored files (the room's whole storage folder, so uploads that were never shared go too; a storage failure is logged and doesn't stop the rest). The room document stays so invite links can show the Room closed page. Sessions stay in each person's history. The host can also close a room straight away (see Host controls); the job and `room:close` share `purgeRoomContent()` for the deletes. Because presence is lost on a restart, the job first gives every open room with `emptySince: null` a fresh grace period.
 
-- **Room settings:** the host's Room settings dialog sends `room:settings` (the Create a room fields plus `roomId`). The handler checks the socket is in the room and the sender is the current host, then `updateRoomSettings` refuses a `maxSize` below the people already in the room (`ROOM_TOO_SMALL`), saves the rest and merges goals by text (a goal that stays keeps its id, tick and author; new ones are added by the host). Presence takes the new `maxSize`, and the room gets `room:update` (plus `goal:update` when the goals changed). A running phase keeps its `endsAt`; the timer reads the settings again when the phase ends, so timer changes apply from the next phase.
-- **Removal:** a removed member's sockets get `room:removed { roomId }` on `user:<id>`. The client shows "You were removed" and doesn't rejoin. The server sends it once `member:remove` is built (Phase 4).
+- **Room settings:** the host's Room settings dialog sends `room:settings` (the Create a room fields plus `roomId`). The handler checks the socket is in the room and the sender is the current host, then `updateRoomSettings` refuses a `maxSize` below the people already in the room (`ROOM_TOO_SMALL`), saves the rest and merges goals by text (a goal that stays keeps its id, tick and author; new ones are added by the host). Presence takes the new `maxSize`, and the room gets `room:update` (plus `goal:update` when the goals changed). A running or part-run phase keeps its time; the timer reads the settings again when the phase ends, so timer changes apply from the next phase. A phase waiting for the host at its full length hasn't run yet, so it takes the new length (`retimeWaiting` in `realtime/timer.ts`, saved only if the timer is unchanged since it was read) and the room gets `timer:state`. If the host lowers the rounds below the current one, the run ends after it: a break whose next round would be past `totalRounds` goes to `done`. On the web, `usePhaseSettings` keeps the ring drawn against the length the current phase was given, while the settings summary shows the new values.
+- **Host controls** (`room.handlers.ts`, which owns presence and the reconnect windows). Each one checks, on every call, that the socket joined the room and the sender is the current host in presence; `member:remove` and `host:transfer` also refuse the host themselves (`CANNOT_TARGET_SELF`) and someone not in the room (`MEMBER_NOT_FOUND`).
+  - `member:remove` adds them to the room's `removedUserIds` first (so a racing rejoin is refused), takes every tab of theirs out of the room's channel, then removes them like a leave (`evict()`: focus time saved, presence, lobby card, follow-live; their reconnect window cancelled), and last sends `room:removed` to `user:<id>`. The web shows "You were removed" and never rejoins.
+  - `host:transfer` sets the host in presence, then saves `hostId`, and sends `presence:update`, the lobby card and `follows:live` for both people.
+  - `room:close` runs the room timer's `closing()` (stops the timeout, logs a run still going with everyone's focus time, while the goals are still there), then `closeRoomNow()` (`closedAt`, goals emptied), sends `room:closed` to the room, empties presence and the channel (cancelling reconnect windows), takes the card off the lobby, sends follow-live for everyone, and deletes the chat, resources and stored files (`purgeRoomContent`). Everyone, the host included, sees their session summary without Rejoin (`closedByHost` in `features/room/roomSession.ts`). On the web it's the "Close room for everyone" button in Room settings, behind a confirm.
+  - On the web, Make host and Remove are on each row of the side panel's People tab (`PeoplePanel`, `useHostActions.ts`); Remove asks first (`components/ui/ConfirmDialog.tsx`). Whoever becomes host gets a "You're the host now" toast.
 
 Room lifecycle and permissions have unit tests.
 
@@ -286,8 +361,46 @@ A room's Files tab holds links and files (PDFs and images up to 10 MB). MongoDB 
 
 `/room/:roomId` (`RoomPage.tsx`) has no sidebar. `?invite=<code>` carries a private room's invite code for people who aren't its host.
 
-- **Joining:** `useRoomSession` emits `room:join` as soon as the socket is connected and again on every `connect` (Socket.IO doesn't rejoin rooms after a reconnect). A pure reducer (`roomSession.ts`) holds the state: `joining`, `joined`, `rejoining` (connection dropped, room still on screen under a banner), `left` (you pressed Leave; the room as it was stays for the summary), `full`, `closed`, `notFound`, `removed` or `error`. It follows `presence:update`, `room:update`, `goal:update`, `resource:new`, `resource:removed` and `room:removed`. Each successful join makes a new timer snapshot and message list, which `useRoomTimer` and `useRoomChat` take as a fresh start. Leaving the page (the back arrow or any link) sends `room:leave`; a refresh or closed tab is a disconnect, with the server's 30-second window.
+- **Joining:** `useRoomSession` emits `room:join` as soon as the socket is connected and again on every `connect` (Socket.IO doesn't rejoin rooms after a reconnect). A pure reducer (`roomSession.ts`) holds the state: `joining`, `joined`, `rejoining` (connection dropped, room still on screen under a banner), `left` (you pressed Leave; the room as it was stays for the summary), `full`, `closed`, `notFound`, `removed` or `error`. It follows `presence:update`, `room:update`, `goal:update`, `resource:new`, `resource:removed` and `room:removed`. Each successful join makes a new timer snapshot and message list, which `useRoomClock` and `useRoomChat` take as a fresh start. Leaving the page (the back arrow or any link) sends `room:leave`; a refresh or closed tab is a disconnect, with the server's 30-second window.
 - **Leave and the session summary:** Leave moves the state to `left` (which counts as ended, so nothing rejoins or leaves twice), unmounts the room (cancelling uploads) and sends `room:leave`. Its ack comes after the server saved your focus time, and only then does `SessionSummaryDialog` load `GET /api/sessions/mine/latest` with `since` = the visit's `joinedAt` (the first join's `serverNow`; reconnects keep it). It shows focused time, rounds and room goals (zeros and the goals as you left them when there's no session from this visit), the weekly goal row and streak (`sessionSummary.ts`), Back to home, and Rejoin the room only while `roomOpen`. Escape and the backdrop go home. Rejoin starts a new visit. The dialog is built on `components/ui/ModalShell.tsx`, the scrim, focus trap and Escape handling that `Modal` also uses.
-- **Host:** taken from presence (`isHost` on your member), so a hand-over shows at once. Only the host sees the timer controls and Settings; everyone else sees who controls the timer.
-- **Timer:** `timerView.ts` turns the server timer and the time left into what the ring shows (phase, clock, round, dots). The tab title shows the time left while a phase runs. `useTimerSounds` plays Web Audio sounds (`chime.ts`) for everyone in the room: three quick rising notes when the host starts a run (from idle or done), and a soft two-note chime when a focus round or break ends. One mute switch covers both, saved in localStorage as `sb-sound`.
-- **Side panel:** Chat, Goals, People and Files as an ARIA tablist; every pane stays mounted so the chat keeps its draft. Below 1100px it is a drawer opened from the dock, which counts unread chat messages. The Files pane is described under Shared resources.
+- **Host:** taken from presence (`isHost` on your member), so a hand-over shows at once. Only the host sees the timer controls, Settings and the People tab's Make host and Remove; everyone else sees who controls the timer.
+- **Timer:** `TimerStage.tsx` (memoised) holds the ring, controls and settings summary and is the only part that ticks. `timerView.ts` turns the server timer and the time left into what the ring shows (phase, clock, round, dots). The tab title shows the time left while a phase runs. The ring's `role="timer"` label gives the time left by the minute; a separate polite live region announces only the phase and round ("Short break. Round 2 of 4"), never the countdown. `useTimerSounds` plays Web Audio sounds (`chime.ts`) for everyone in the room: three quick rising notes when the host starts a run (from idle or done), and a soft two-note chime when a focus round or break ends. One mute switch covers both, saved in localStorage as `sb-sound`.
+- **Side panel:** Chat, Goals, People and Files as an ARIA tablist; every pane stays mounted so the chat keeps its draft. Below 1100px it is a drawer opened from the dock, which counts unread chat messages; while open it is a modal dialog that keeps Tab inside it (`lib/focusTrap.ts`, shared with `ModalShell` and the notification bell).
+- **Chat system lines:** `chat/systemLines.ts` adds grey lines to the chat on this device only ("You joined the room", "Round 1 complete · break started", "Maya is now the host"), worked out from timer and presence changes seen during the visit. They aren't saved or sent, so a reload or a late joiner doesn't see earlier ones. The Files pane is described under Shared resources.
+
+## Operations: health, logs, errors, shutdown
+
+How to deploy is in `docs/DEPLOY.md`. This section covers what the code does in production.
+
+- **Health (`modules/health/`):** `GET /api/health` answers 200 `{ ok: true, db: 'up' }` only when MongoDB is connected and the server isn't shutting down. Otherwise it answers 503 `{ ok: false, db }`. It also shows `release`, the deployed commit, when Render provides it (`RENDER_GIT_COMMIT`), so the deploy workflow can wait for the new instance. Render's health check (`render.yaml`) uses it, so a deploy that can't reach Atlas never goes live, and an instance that's draining stops getting traffic. The request logger skips it.
+- **Logs (`lib/logger.ts`):** pino, one JSON line per event in production, pretty-printed in development.
+  - Every line has `service`, `env`, `release` (the deployed commit), an ISO `time` and a text `level` (`"error"`, not `50`).
+  - Each request gets one line with `req.id` (also sent back as `X-Request-Id`), method, url and status.
+  - Authorization, Cookie and Set-Cookie headers are redacted.
+  - Lifecycle messages put their values in fields, e.g. `{ port }`, `{ signal }`.
+- **Errors (`lib/monitoring.ts`, Sentry):** off without `SENTRY_DSN`.
+  - One rule decides what's reported: every log at error level or above that carries an `err`. The pino `logMethod` hook (`reportLoggedError`) sends it, with the log's other fields and message as context.
+  - That covers the REST error handler's 500s, the socket wrapper's INTERNAL_ERRORs, background jobs, and unhandled rejections and exceptions. AppErrors are answers and never logged as errors, so they're never reported.
+  - Nothing personal is collected (`dataCollection` all off). `scrubEvent` also keeps only the request's method and path, and the user's id.
+  - `node --enable-source-maps` makes stack traces point at TypeScript lines, in logs and in Sentry, with no upload.
+- **Errors on the web (`lib/errorTracking.ts`, Sentry):** off without `VITE_SENTRY_DSN`.
+  - `initErrorTracking()` runs in `main.tsx` before the first render. Uncaught errors and rejections are reported automatically.
+  - `RouteErrorPage` is the root route's `ErrorBoundary`. It shows "Something went wrong" with Reload, and reports the error. This covers render errors and page chunks that fail to download after a deploy.
+  - ApiErrors under 500 are dropped: they're answers the screen already shows. Query strings are stripped from the page URL and from breadcrumbs, because reset tokens travel in them.
+  - Source maps are built only when `SENTRY_AUTH_TOKEN` is set. `@sentry/vite-plugin` uploads them and then deletes them from `dist`, so they're never served.
+  - The release is `SENTRY_RELEASE` (set by the deploy workflow), else `VERCEL_GIT_COMMIT_SHA`.
+- **Process handlers (`index.ts`):**
+  - An unhandled rejection is logged (and so reported); the process keeps running.
+  - An uncaught exception is logged at fatal level, then the process exits with code 1 and Render starts a fresh instance.
+  - Sentry's own handlers for these are turned off, so nothing is reported twice.
+- **Graceful shutdown (`index.ts`):** on SIGTERM or SIGINT the server first sets the shutting-down flag, so health turns 503. Then it:
+  1. stops the cleanup job and the timers;
+  2. closes Socket.IO and the HTTP server, and disconnects MongoDB;
+  3. sends queued Sentry events (2 s at most);
+  4. flushes the logs and exits.
+
+  Anything still running after 10 s is cut off. Render waits 30 s.
+
+## Test coverage
+
+`pnpm --filter @studibrowse/server test:coverage` runs the server tests with V8 coverage (`@vitest/coverage-v8`) over `src/modules/**` and `src/realtime/**`. The thresholds in `apps/server/vitest.config.ts` (95% lines, statements and functions, 85% branches) sit just under the measured level, above the 80% floor, so a drop fails the run. CI runs it after `pnpm test`.

@@ -287,6 +287,133 @@ describe('RoomPage', () => {
     expect(emitWithAck.mock.calls.filter(([event]) => event === 'room:join')).toHaveLength(1);
   });
 
+  describe('host controls', () => {
+    function joinAsHost() {
+      answerJoin(
+        joinData({
+          room: roomDetail({ isHost: true }),
+          members: [member('me', 'Alex Smith', { isHost: true }), member('maya', 'Maya Chen')],
+        }),
+      );
+    }
+
+    async function openPeople() {
+      renderRoom();
+      await screen.findByRole('heading', { level: 1, name: 'Finals week focus' });
+      fireEvent.click(screen.getByRole('tab', { name: /People/ }));
+    }
+
+    it('gives the host Make host and Remove on everyone else’s row', async () => {
+      joinAsHost();
+      await openPeople();
+      expect(screen.getByRole('button', { name: 'Make Maya Chen the host' })).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Remove Maya Chen from the room' })).toBeDefined();
+      expect(screen.queryByRole('button', { name: 'Make Alex Smith the host' })).toBeNull();
+    });
+
+    it('shows them to nobody but the host', async () => {
+      answerJoin(joinData());
+      await openPeople();
+      expect(screen.queryByRole('button', { name: /Make .* the host/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Remove .* from the room/ })).toBeNull();
+    });
+
+    it('hands over the host role', async () => {
+      joinAsHost();
+      await openPeople();
+      fireEvent.click(screen.getByRole('button', { name: 'Make Maya Chen the host' }));
+      expect(emitWithAck).toHaveBeenCalledWith('host:transfer', { roomId: ROOM, userId: 'maya' });
+      expect(await screen.findByText('Maya is now the host')).toBeDefined();
+    });
+
+    it('asks before removing someone, then removes them', async () => {
+      joinAsHost();
+      await openPeople();
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Maya Chen from the room' }));
+      const dialog = screen.getByRole('dialog', { name: 'Remove Maya from the room?' });
+      expect(within(dialog).getByText('They won’t be able to rejoin this room.')).toBeDefined();
+      expect(emitWithAck).not.toHaveBeenCalledWith('member:remove', expect.anything());
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
+      expect(emitWithAck).toHaveBeenCalledWith('member:remove', { roomId: ROOM, userId: 'maya' });
+      expect(await screen.findByText('Maya was removed')).toBeDefined();
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('removes nobody when the host cancels', async () => {
+      joinAsHost();
+      await openPeople();
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Maya Chen from the room' }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(emitWithAck).not.toHaveBeenCalledWith('member:remove', expect.anything());
+    });
+
+    it('shows the server’s answer when it refuses', async () => {
+      joinAsHost();
+      emitWithAck.mockImplementation((event: string) =>
+        event === 'room:join'
+          ? Promise.resolve(
+              joinData({
+                room: roomDetail({ isHost: true }),
+                members: [member('me', 'Alex Smith', { isHost: true }), member('maya', 'Maya Chen')],
+              }),
+            )
+          : Promise.reject(new ApiError(404, 'MEMBER_NOT_FOUND', 'That person isn’t in the room.')),
+      );
+      await openPeople();
+      fireEvent.click(screen.getByRole('button', { name: 'Make Maya Chen the host' }));
+      expect(await screen.findByText('That person isn’t in the room.')).toBeDefined();
+    });
+
+    it('tells you when the host role reaches you', async () => {
+      answerJoin(joinData());
+      renderRoom();
+      await screen.findByRole('heading', { level: 1, name: 'Finals week focus' });
+      serverSends('presence:update', {
+        roomId: ROOM,
+        members: [member('me', 'Alex Smith', { isHost: true })],
+      });
+      expect(await screen.findByText('You’re the host now')).toBeDefined();
+    });
+
+    it('closes the room for everyone from Room settings, after asking', async () => {
+      joinAsHost();
+      renderRoom();
+      fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close room for everyone' }));
+      const confirm = screen.getByRole('dialog', { name: 'Close this room for everyone?' });
+      fireEvent.click(within(confirm).getByRole('button', { name: 'Close room' }));
+      await waitFor(() => expect(emitWithAck).toHaveBeenCalledWith('room:close', { roomId: ROOM }));
+    });
+
+    it('shows the session summary without Rejoin when the host closes the room', async () => {
+      answerJoin(joinData({ serverNow: 1_000 }));
+      latestMine.mockResolvedValue(summary());
+      renderRoom();
+      await screen.findByRole('heading', { level: 1, name: 'Finals week focus' });
+
+      serverSends('room:closed', { roomId: ROOM });
+      const dialog = await screen.findByRole('dialog', { name: 'Nice session, Alex' });
+      expect(
+        within(dialog).getByText('The host closed Finals week focus. Here’s what you got done.'),
+      ).toBeDefined();
+      expect(await within(dialog).findByText('1h 40m')).toBeDefined();
+      expect(latestMine).toHaveBeenCalledWith(ROOM, 1_000);
+      // The server may still answer roomOpen for a moment; there's nothing to rejoin either way.
+      expect(within(dialog).queryByRole('button', { name: 'Rejoin the room' })).toBeNull();
+      socketFires('connect');
+      expect(emitWithAck.mock.calls.filter(([event]) => event === 'room:join')).toHaveLength(1);
+      expect(emitWithAck).not.toHaveBeenCalledWith('room:leave', expect.anything());
+    });
+
+    it('shows the removed screen when a rejoin is refused', async () => {
+      answerJoin(new ApiError(403, 'REMOVED_FROM_ROOM', 'The host removed you from this room.'));
+      renderRoom();
+      expect(await screen.findByRole('heading', { name: 'You were removed from this room' })).toBeDefined();
+    });
+  });
+
   describe('Leave', () => {
     async function leave(data: LatestSessionResponse | Error = summary()) {
       answerJoin(joinData({ serverNow: 1_000 }));

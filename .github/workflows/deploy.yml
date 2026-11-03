@@ -1,0 +1,102 @@
+name: Deploy
+
+# Runs after the CI workflow finishes, and deploys only when CI passed for a push to main. A newer push cancels
+# an older CI run (see ci.yml), which then ends "cancelled" and never deploys.
+# Setup, secrets and variables: docs/DEPLOY.md.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One deploy at a time, in order. Never cancel one halfway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  api:
+    name: API (Render)
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Trigger the Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::Set the RENDER_DEPLOY_HOOK_URL secret (docs/DEPLOY.md)."
+            exit 1
+          fi
+          # Deploys the newest commit on main, which is this one (or a newer one whose deploy will follow).
+          curl --fail --silent --show-error --request POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
+
+      # Render switches traffic over only once the new instance passes /api/health. Health reports the deployed
+      # commit (RENDER_GIT_COMMIT), so wait until it's this one: the old instance keeps answering meanwhile.
+      - name: Wait for this commit to be live
+        env:
+          API_ORIGIN: ${{ vars.API_ORIGIN }}
+          EXPECTED: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -z "$API_ORIGIN" ]; then
+            echo "::error::Set the API_ORIGIN variable (docs/DEPLOY.md)."
+            exit 1
+          fi
+          # Up to 15 minutes: a free instance may first wake up, then build.
+          for attempt in $(seq 1 90); do
+            live=$(curl --silent --max-time 10 "$API_ORIGIN/api/health" | jq -r '.release // empty' 2>/dev/null || true)
+            if [ "$live" = "$EXPECTED" ]; then
+              echo "API is live on $EXPECTED."
+              exit 0
+            fi
+            echo "Live: ${live:-unknown}. Waiting for $EXPECTED (attempt $attempt)."
+            sleep 10
+          done
+          echo "::error::$API_ORIGIN never reported $EXPECTED. Check the deploy in the Render dashboard."
+          exit 1
+
+  web:
+    name: Web (Vercel)
+    # After the API, so the web app never calls endpoints the API doesn't have yet.
+    needs: api
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # Tags Sentry events and source maps with the deployed commit (vite.config.ts).
+      SENTRY_RELEASE: ${{ github.event.workflow_run.head_sha }}
+      HUSKY: '0'
+      MONGOMS_DISABLE_POSTINSTALL: '1'
+      # Pinned, so a new CLI release can't change a deploy without a commit.
+      VERCEL_CLI: vercel@64.7.0
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Brings down the Vercel project's settings and production env vars (VITE_API_URL, VITE_SENTRY_DSN, ...).
+      - name: Pull the Vercel project settings
+        run: pnpm dlx "$VERCEL_CLI" pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build
+        run: pnpm dlx "$VERCEL_CLI" build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to production
+        run: pnpm dlx "$VERCEL_CLI" deploy --prebuilt --prod --token="$VERCEL_TOKEN"

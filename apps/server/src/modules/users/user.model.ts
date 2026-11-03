@@ -43,6 +43,15 @@ const notificationPrefsSchema = new Schema(
   { _id: false },
 );
 
+// Settings › Privacy: what other people see on your profile and in people lists.
+const privacySchema = new Schema(
+  {
+    showStudying: { type: Boolean, required: true, default: true },
+    showStats: { type: Boolean, required: true, default: true },
+  },
+  { _id: false },
+);
+
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: NAME_MAX },
@@ -51,6 +60,8 @@ const userSchema = new Schema(
     email: { type: String, required: true, lowercase: true, trim: true },
     // Absent for Google-only accounts. Never selected unless a query asks for it.
     passwordHash: { type: String, select: false },
+    /** When a password was last set (sign up or reset). Null on older accounts and Google-only ones. */
+    passwordChangedAt: { type: Date, default: null },
     googleId: { type: String },
     avatarColor: { type: String, enum: AVATAR_COLORS, required: true, default: randomAvatarColor },
     studying: { type: String, trim: true, maxlength: STUDYING_MAX, default: '' },
@@ -67,6 +78,7 @@ const userSchema = new Schema(
     timeZone: { type: String, required: true, default: DEFAULT_TIME_ZONE },
     following: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
     notificationPrefs: { type: notificationPrefsSchema, required: true, default: () => ({}) },
+    privacy: { type: privacySchema, required: true, default: () => ({}) },
     onboardedAt: { type: Date, default: null },
   },
   { timestamps: true },

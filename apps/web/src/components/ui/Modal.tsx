@@ -16,7 +16,8 @@ interface ModalProps {
 
 /**
  * A modal dialog with a title, a close button, a body and an optional footer. Escape, the close button and a
- * click on the backdrop close it (see ModalShell). Focus starts on the first field.
+ * click on the backdrop close it (see ModalShell). Focus starts on the first field or, in a dialog without
+ * fields (a confirmation), on the first footer button, which is the safe choice (Cancel).
  */
 export function Modal({ title, subtitle, onClose, onSubmit, footer, children }: ModalProps) {
   const titleId = useId();
@@ -29,7 +30,8 @@ export function Modal({ title, subtitle, onClose, onSubmit, footer, children }: 
       labelledBy={titleId}
       {...(subtitle ? { describedBy: subtitleId } : {})}
       initialFocus={(dialog) =>
-        dialog.querySelector<HTMLElement>(`.${styles.body} :is(input, select, textarea):not([disabled])`)
+        dialog.querySelector<HTMLElement>(`.${styles.body} :is(input, select, textarea):not([disabled])`) ??
+        dialog.querySelector<HTMLElement>(`.${styles.foot} button:not([disabled])`)
       }
     >
       <div className={styles.head}>

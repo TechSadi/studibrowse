@@ -15,6 +15,7 @@ import type { LobbyRoomCard, RoomDetail, RoomGoal, RoomTimer, TimerSettings } fr
 import type {
   AppNotification,
   ChatMessage,
+  FollowLive,
   PresenceMember,
   RoomResource,
   SessionSummary,
@@ -56,6 +57,8 @@ export const roomJoinSchema = z.strictObject({
   inviteCode: z.string().regex(INVITE_CODE_PATTERN, 'That invite code is not valid.').optional(),
 });
 export const roomLeaveSchema = roomOnlySchema;
+/** The host closes the room for everyone, straight away. */
+export const roomCloseSchema = roomOnlySchema;
 
 /** The host's Room settings dialog: the Create a room fields, for a room that already exists. */
 export const roomSettingsUpdateSchema = roomSettingsSchema.extend({ roomId });
@@ -125,6 +128,12 @@ export const memberRemoveSchema = hostTransferSchema;
 export const lobbySubscribeSchema = z.strictObject({});
 export const lobbyUnsubscribeSchema = lobbySubscribeSchema;
 
+/**
+ * Watch the people you follow: which public room each is in now, then follows:live whenever that changes. Send it
+ * again after following or unfollowing someone. The server reads who you follow itself. No fields.
+ */
+export const followsWatchSchema = z.strictObject({});
+
 // ---- Event maps ----
 
 type WithAck<Schema extends z.ZodType, Data> = (payload: z.input<Schema>, ack: AckCallback<Data>) => void;
@@ -161,6 +170,7 @@ export interface ClientToServerEvents {
   'room:join': WithAck<typeof roomJoinSchema, RoomJoinData>;
   'room:leave': WithAck<typeof roomLeaveSchema, EmptyData>;
   'room:settings': WithAck<typeof roomSettingsUpdateSchema, EmptyData>;
+  'room:close': WithAck<typeof roomCloseSchema, EmptyData>;
   'status:set': WithAck<typeof statusSetSchema, EmptyData>;
   'chat:send': WithAck<typeof chatSendSchema, { message: ChatMessage }>;
   /** No ack: typing indicators are best effort. */
@@ -178,12 +188,16 @@ export interface ClientToServerEvents {
   'member:remove': WithAck<typeof memberRemoveSchema, EmptyData>;
   'lobby:subscribe': WithAck<typeof lobbySubscribeSchema, EmptyData>;
   'lobby:unsubscribe': WithAck<typeof lobbyUnsubscribeSchema, EmptyData>;
+  /** `live` has an entry for each person you follow, with `room: null` when they're not in a public room. */
+  'follows:watch': WithAck<typeof followsWatchSchema, { live: FollowLive[] }>;
 }
 
 export interface ServerToClientEvents {
   'room:update': (payload: { roomId: string; settings: RoomSettingsUpdate }) => void;
   /** To the removed person's own sockets (`user:<id>`). */
   'room:removed': (payload: { roomId: string }) => void;
+  /** To everyone in the room: the host closed it. Their focus time is already saved. */
+  'room:closed': (payload: { roomId: string }) => void;
   'presence:update': (payload: { roomId: string; members: PresenceMember[] }) => void;
   'chat:new': (payload: { message: ChatMessage }) => void;
   'chat:typing': (payload: { roomId: string; userId: string; isTyping: boolean }) => void;
@@ -202,6 +216,8 @@ export interface ServerToClientEvents {
   'rooms:upsert': (payload: { room: LobbyRoomCard }) => void;
   /** To the lobby: a room closed or went private. */
   'rooms:remove': (payload: { roomId: string }) => void;
+  /** To the people watching this person (follows:watch): they entered, left or changed public room. */
+  'follows:live': (payload: FollowLive) => void;
 }
 
 /** What the server stores on each socket after the handshake. */
@@ -214,6 +230,7 @@ export const clientEventSchemas = {
   'room:join': roomJoinSchema,
   'room:leave': roomLeaveSchema,
   'room:settings': roomSettingsUpdateSchema,
+  'room:close': roomCloseSchema,
   'status:set': statusSetSchema,
   'chat:send': chatSendSchema,
   'chat:typing': chatTypingSchema,
@@ -230,6 +247,7 @@ export const clientEventSchemas = {
   'member:remove': memberRemoveSchema,
   'lobby:subscribe': lobbySubscribeSchema,
   'lobby:unsubscribe': lobbyUnsubscribeSchema,
+  'follows:watch': followsWatchSchema,
 } as const satisfies Record<keyof ClientToServerEvents, z.ZodType>;
 
 export type ClientEventName = keyof ClientToServerEvents;

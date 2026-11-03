@@ -56,7 +56,8 @@
   min-width: 0;
 }
 
-@media (max-width: 560px) {
+/* Two columns at phone width (mockup .stepper-grid). */
+@media (max-width: 767px) {
   .grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }

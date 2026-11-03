@@ -30,6 +30,7 @@ function fakeFetch(input: string, init: RequestInit = {}) {
     return Response.json(summary);
   }
   if (route === 'GET /api/sessions/mine') return Response.json({ sessions: [], nextCursor: null });
+  if (route === 'GET /api/notifications/unread-count') return Response.json({ count: 3 });
   throw new Error(`Unexpected request: ${route}`);
 }
 
@@ -55,7 +56,11 @@ describe('AppShell', () => {
 
     const menu = within(sidebar()).getByRole('navigation', { name: 'Main' });
     const links = within(menu).getAllByRole('link');
-    expect(links.map((l) => l.textContent)).toEqual(['Home', 'Your progress', 'Notifications', 'Settings']);
+    expect(links.map((l) => l.textContent)).toEqual(['Home', 'Your progress', 'Settings']);
+    // Notifications opens the bell's dropdown, as in the mockup, and shows the unread count.
+    const bell = within(menu).getByRole('button', { name: /notifications/i });
+    expect(bell.getAttribute('aria-expanded')).toBe('false');
+    expect(await within(bell).findByText('3')).toBeDefined();
     expect(within(menu).getByRole('link', { name: 'Your progress' }).getAttribute('aria-current')).toBe(
       'page',
     );

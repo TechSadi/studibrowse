@@ -215,7 +215,7 @@ describe('goal:toggle', () => {
     expect((await storedGoals(roomId))[0]!.done).toBe(false);
   });
 
-  it(`allows ${GOAL_RATE_LIMIT.limit} per socket in the window, then rate limits`, async () => {
+  it(`allows ${GOAL_RATE_LIMIT.limit} per person in the window, then rate limits`, async () => {
     const { people, roomId, goals } = await roomWith(1, ['Finish set 3']);
     const client = people[0]!.client;
     const goalId = goals[0]!.id;

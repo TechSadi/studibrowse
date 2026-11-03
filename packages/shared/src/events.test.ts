@@ -15,10 +15,12 @@ import {
   goalRemoveSchema,
   goalToggleSchema,
   hostTransferSchema,
+  followsWatchSchema,
   lobbySubscribeSchema,
   lobbyUnsubscribeSchema,
   resourceAddSchema,
   resourceRemoveSchema,
+  roomCloseSchema,
   roomJoinSchema,
   roomSettingsUpdateSchema,
   statusSetSchema,
@@ -36,6 +38,7 @@ describe('clientEventSchemas', () => {
       [
         'chat:send',
         'chat:typing',
+        'follows:watch',
         'goal:add',
         'goal:remove',
         'goal:toggle',
@@ -45,6 +48,7 @@ describe('clientEventSchemas', () => {
         'member:remove',
         'resource:add',
         'resource:remove',
+        'room:close',
         'room:join',
         'room:leave',
         'room:settings',
@@ -67,6 +71,7 @@ describe('clientEventSchemas', () => {
 describe.each([
   ['lobby:subscribe', lobbySubscribeSchema],
   ['lobby:unsubscribe', lobbyUnsubscribeSchema],
+  ['follows:watch', followsWatchSchema],
 ])('%s', (_event, schema) => {
   it('takes an empty payload', () => {
     expect(schema.parse({})).toEqual({});
@@ -100,6 +105,11 @@ describe('room id payloads', () => {
   it('checks user ids too', () => {
     expect(hostTransferSchema.safeParse({ roomId, userId }).success).toBe(true);
     expect(hostTransferSchema.safeParse({ roomId, userId: '123' }).success).toBe(false);
+  });
+
+  it('takes only the room id on room:close', () => {
+    expect(roomCloseSchema.parse({ roomId })).toEqual({ roomId });
+    expect(roomCloseSchema.safeParse({ roomId, userId }).success).toBe(false);
   });
 });
 

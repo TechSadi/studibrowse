@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PublicUser } from '@studibrowse/shared';
+import type { PresenceMember, PublicUser } from '@studibrowse/shared';
 import { PhoneHeader } from '../../components/layout/PhoneHeader';
+import { SkipLink } from '../../components/layout/SkipLink';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useToast } from '../../components/ui/Toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSocketEvent } from '../../hooks/useSocket';
@@ -18,11 +20,10 @@ import { ReconnectBanner } from './ReconnectBanner';
 import { RoomBar } from './RoomBar';
 import type { JoinedRoom } from './roomSession';
 import { PanelDock, SidePanel, type PanelTab } from './SidePanel';
-import { HostOnlyNote, TimerControls } from './TimerControls';
-import { TimerRing } from './TimerRing';
-import { TimerSettingsSummary } from './TimerSettingsSummary';
-import { timerTitle, timerView } from './timerView';
-import { useRoomTimer } from './useRoomTimer';
+import { TimerStage } from './TimerStage';
+import { useHostActions } from './useHostActions';
+import { usePhaseSettings } from './usePhaseSettings';
+import { useRoomClock } from './useRoomTimer';
 import { useTimerSounds } from './useTimerSounds';
 
 /** Where the side panel stops being a column and becomes a drawer (the mockup's breakpoint). */
@@ -51,20 +52,11 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
   const host = members.find((member) => member.isHost);
   const hostName = host && host.userId !== user.id ? firstName(host.name) : null;
 
-  const { timer, remainingMs } = useRoomTimer(room.id, snapshot);
-  const view = timerView(timer, room.timerSettings, remainingMs);
+  // The server's timer only: the per-second countdown lives in TimerStage, so this page doesn't re-render with it.
+  const clock = useRoomClock(room.id, snapshot);
+  const { timer } = clock;
+  const phaseSettings = usePhaseSettings(timer, room.timerSettings);
   const { soundOn, toggleSound } = useTimerSounds(timer.phase);
-
-  const title = timerTitle(view, room.name);
-  useEffect(() => {
-    document.title = title;
-  }, [title]);
-  useEffect(
-    () => () => {
-      document.title = 'StudiBrowse';
-    },
-    [],
-  );
 
   // ---- Side panel ----
   const drawer = useMediaQuery(DRAWER_QUERY);
@@ -91,6 +83,21 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
     wasRejoining.current = rejoining;
   }, [rejoining, toast]);
 
+  // ---- Host controls ----
+  const hostActions = useHostActions(room.id);
+  const [removing, setRemoving] = useState<PresenceMember | null>(null);
+  const wasHost = useRef(isHost);
+  useEffect(() => {
+    if (!wasHost.current && isHost) {
+      toast({
+        icon: 'crown',
+        title: 'You’re the host now',
+        detail: 'You control the timer and room settings.',
+      });
+    }
+    wasHost.current = isHost;
+  }, [isHost, toast]);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const code = room.inviteCode ?? inviteCode;
   // The tab count follows your changes as soon as you make them, like the list does.
@@ -101,8 +108,9 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
 
   return (
     <>
+      <SkipLink />
       <PhoneHeader variant="room" />
-      <main className={styles.view}>
+      <main id="main" tabIndex={-1} className={styles.view}>
         <div className={styles.stage}>
           <div className={styles.inner}>
             <ReconnectBanner rejoining={rejoining} />
@@ -117,15 +125,15 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
               onLeave={onLeave}
             />
 
-            <section className={styles.timerZone} aria-label="Shared timer">
-              <TimerRing view={view} remainingMs={remainingMs} />
-              {isHost ? (
-                <TimerControls roomId={room.id} phase={timer.phase} view={view} />
-              ) : (
-                <HostOnlyNote hostName={hostName} />
-              )}
-              <TimerSettingsSummary settings={room.timerSettings} />
-            </section>
+            <TimerStage
+              roomId={room.id}
+              roomName={room.name}
+              clock={clock}
+              settings={room.timerSettings}
+              phaseSettings={phaseSettings}
+              isHost={isHost}
+              hostName={hostName}
+            />
 
             {me ? <MyStatus roomId={room.id} me={me} /> : null}
             <PeopleList members={members} myUserId={user.id} />
@@ -149,11 +157,21 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
                 initialMessages={messages}
                 myUserId={user.id}
                 members={members}
-                focusRound={timer.phase === 'focus'}
+                phase={timer.phase}
+                round={timer.round}
               />
             ),
             goals: <GoalsPanel roomGoals={roomGoals} members={members} myUserId={user.id} isHost={isHost} />,
-            people: <PeoplePanel members={members} myUserId={user.id} />,
+            people: (
+              <PeoplePanel
+                members={members}
+                myUserId={user.id}
+                isHost={isHost}
+                busy={hostActions.busy}
+                onMakeHost={(member) => void hostActions.makeHost(member)}
+                onRemove={setRemoving}
+              />
+            ),
             files: (
               <FilesPanel
                 resources={resources}
@@ -183,6 +201,19 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
           memberCount={members.length}
           onClose={() => setSettingsOpen(false)}
         />
+      ) : null}
+      {removing && isHost ? (
+        <ConfirmDialog
+          title={`Remove ${firstName(removing.name)} from the room?`}
+          confirmLabel="Remove"
+          busyLabel="Removing…"
+          busy={hostActions.busy}
+          danger
+          onConfirm={() => void hostActions.remove(removing).then(() => setRemoving(null))}
+          onClose={() => setRemoving(null)}
+        >
+          They won’t be able to rejoin this room.
+        </ConfirmDialog>
       ) : null}
     </>
   );

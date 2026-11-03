@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import iconButton from '../../components/ui/IconButton.module.css';
 import { useToast } from '../../components/ui/Toast';
+import { isWebUrl } from './chat/linkify';
 import { FILE_ACCEPT, type PendingUpload, type RoomFiles } from './files/useRoomFiles';
 import styles from './panes.module.css';
 import { firstName } from './people';
@@ -185,16 +186,19 @@ export function FilesPanel({ resources, roomFiles, members, myUserId, isHost }: 
                   </small>
                 </div>
                 <div className={styles.resActions}>
-                  <a
-                    className={`${iconButton.iconBtn} ${styles.open}`}
-                    href={resource.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`Open ${resource.title}`}
-                  >
-                    <Icon name="ext" />
-                  </a>
-                  {resource.downloadUrl ? (
+                  {/* The server only stores http(s) urls; checked again so a javascript: url can never be a link. */}
+                  {isWebUrl(resource.url) ? (
+                    <a
+                      className={`${iconButton.iconBtn} ${styles.open}`}
+                      href={resource.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Open ${resource.title}`}
+                    >
+                      <Icon name="ext" />
+                    </a>
+                  ) : null}
+                  {resource.downloadUrl && isWebUrl(resource.downloadUrl) ? (
                     <a
                       className={`${iconButton.iconBtn} ${styles.open}`}
                       href={resource.downloadUrl}

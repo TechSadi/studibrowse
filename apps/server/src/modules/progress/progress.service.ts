@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import type { ProgressRange, ProgressSummaryResponse } from '@studibrowse/shared';
 import { unauthenticated } from '../auth/auth.errors';
 import { Session } from '../sessions/session.model';
-import { localDayNumber, resolveTimeZone } from '../sessions/streak';
+import { displayedStreak, localDayNumber, resolveTimeZone } from '../sessions/streak';
 import { studiedToday, weekStartDay } from '../sessions/week';
 import { User } from '../users/user.model';
 
@@ -127,8 +127,6 @@ export async function getProgressSummary(
 
   const today = localDayNumber(now, timeZone);
   const lastStudiedAt = user.lastStudiedAt ?? null;
-  // Streaks only change when a session is logged, so one whose last day is before yesterday has lapsed.
-  const alive = lastStudiedAt !== null && localDayNumber(lastStudiedAt, timeZone) >= today - 1;
   const week = totals[0] ?? { sessions: 0, rooms: 0, people: 0 };
 
   return {
@@ -138,7 +136,7 @@ export async function getProgressSummary(
     week: { focusMins: sum(thisWeek), goalMins: user.weeklyGoalMins, ...week },
     lastWeek: { focusMins: sum(lastWeek) },
     streak: {
-      current: alive ? user.streak.current : 0,
+      current: displayedStreak(user.streak.current, lastStudiedAt, timeZone, now),
       longest: user.streak.longest,
       studiedToday: studiedToday(lastStudiedAt, now, timeZone),
     },

@@ -17,3 +17,7 @@ export const roomChannel = (roomId: string) => `room:${roomId}`;
 
 /** The Socket.IO room for everyone looking at a list of public rooms (Home). */
 export const LOBBY_CHANNEL = 'lobby';
+
+/** The Socket.IO room for everyone watching whether this person is in a public room (follows:watch). */
+export const watchChannel = (userId: string) => `watch:${userId}`;
+export const WATCH_CHANNEL_PREFIX = 'watch:';

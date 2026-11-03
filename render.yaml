@@ -1,0 +1,55 @@
+# Render Blueprint for the API (Express + Socket.IO). Create it with Render > New > Blueprint and pick this repo.
+# Every variable marked `sync: false` is asked for once in the dashboard and never stored here.
+# Step by step, with every value explained: docs/DEPLOY.md.
+services:
+  - type: web
+    name: studibrowse-api
+    runtime: node
+    # Free sleeps after 15 minutes without traffic. Waking takes about a minute and clears in-memory presence.
+    # Change to starter for an always-on instance.
+    plan: free
+    region: frankfurt
+    branch: main
+    # Deploys come only from .github/workflows/deploy.yml, after CI passes on main.
+    autoDeployTrigger: off
+    # corepack runs the pnpm version pinned in package.json. --prod=false installs the build tools even though
+    # NODE_ENV is production. HUSKY=0 and MONGOMS_DISABLE_POSTINSTALL=1 (below) skip git hooks and the test
+    # database download.
+    buildCommand: corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm --filter @studibrowse/server build
+    startCommand: cd apps/server && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Requests arrive browser -> Vercel rewrite -> Render's proxy -> server.
+      - key: TRUST_PROXY
+        value: '2'
+      - key: LOG_LEVEL
+        value: info
+      - key: HUSKY
+        value: '0'
+      - key: MONGOMS_DISABLE_POSTINSTALL
+        value: '1'
+      - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
+        value: '0'
+      # Render generates a random value once. Changing it later signs everyone out.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SENTRY_DSN
+        sync: false

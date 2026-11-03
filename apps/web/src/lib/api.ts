@@ -1,17 +1,24 @@
 import type {
   ApiErrorBody,
   AuthResponse,
+  ChangeEmailInput,
   CreateRoomInput,
   CreateRoomResponse,
+  DeleteAccountInput,
   FollowingResponse,
+  FollowListResponse,
   ForgotPasswordInput,
   ForgotPasswordResponse,
   GoogleAuthInput,
   InvitePreviewResponse,
   LatestSessionResponse,
   LoginInput,
+  MarkReadData,
   MeResponse,
   MySessionsResponse,
+  NotificationFilter,
+  NotificationsResponse,
+  ProfileResponse,
   ProgressSummaryResponse,
   PublicRoomsQuery,
   PublicRoomsResponse,
@@ -19,6 +26,7 @@ import type {
   RoomResponse,
   SignupInput,
   SuggestionsResponse,
+  UnreadCountResponse,
   UpdateMeInput,
   UploadSignInput,
   UploadSignResponse,
@@ -166,6 +174,8 @@ export const authApi = {
     request<ForgotPasswordResponse>('POST', '/api/auth/forgot', { body: input }),
   reset: (input: ResetPasswordInput) => request<void>('POST', '/api/auth/reset', { body: input }),
   logout: () => request<void>('POST', '/api/auth/logout'),
+  /** Signs out every device, this one included. */
+  logoutAll: () => request<void>('POST', '/api/auth/logout-all', { auth: true }),
   me: () => request<MeResponse>('GET', '/api/auth/me', { auth: true }),
 };
 
@@ -178,7 +188,20 @@ export const usersApi = {
     ),
   updateMe: (input: UpdateMeInput) =>
     request<MeResponse>('PATCH', '/api/users/me', { body: input, auth: true }),
-  following: () => request<FollowingResponse>('GET', '/api/users/me/following', { auth: true }),
+  changeEmail: (input: ChangeEmailInput) =>
+    request<MeResponse>('PATCH', '/api/users/me/email', { body: input, auth: true }),
+  deleteMe: (input: DeleteAccountInput) =>
+    request<void>('DELETE', '/api/users/me', { body: input, auth: true }),
+  myFollowing: () => request<FollowingResponse>('GET', '/api/users/me/following', { auth: true }),
+  profile: (username: string) =>
+    request<ProfileResponse>('GET', `/api/users/${encodeURIComponent(username)}`, { auth: true }),
+  /** A profile's Followers or Following list. `cursor` is the previous page's nextCursor. */
+  followList: (username: string, kind: 'followers' | 'following', cursor?: string) =>
+    request<FollowListResponse>(
+      'GET',
+      `/api/users/${encodeURIComponent(username)}/${kind}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+      { auth: true },
+    ),
   suggestions: () => request<SuggestionsResponse>('GET', '/api/users/suggestions', { auth: true }),
   follow: (userId: string) =>
     request<MeResponse>('POST', `/api/users/${encodeURIComponent(userId)}/follow`, { auth: true }),
@@ -218,6 +241,16 @@ export const sessionsApi = {
     request<LatestSessionResponse>('GET', `/api/sessions/mine/latest${queryString({ roomId, since })}`, {
       auth: true,
     }),
+};
+
+export const notificationsApi = {
+  list: ({ filter, cursor }: { filter: NotificationFilter; cursor?: string | undefined }) =>
+    request<NotificationsResponse>('GET', `/api/notifications${queryString({ filter, cursor })}`, {
+      auth: true,
+    }),
+  unreadCount: () => request<UnreadCountResponse>('GET', '/api/notifications/unread-count', { auth: true }),
+  markRead: (input: MarkReadData) =>
+    request<UnreadCountResponse>('POST', '/api/notifications/read', { body: input, auth: true }),
 };
 
 export const progressApi = {

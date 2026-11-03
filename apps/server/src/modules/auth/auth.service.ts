@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcrypt';
-import { mongo } from 'mongoose';
 import {
   NAME_MAX,
   type GoogleAuthData,
@@ -9,6 +8,7 @@ import {
   type SignupData,
 } from '@studibrowse/shared';
 import { env } from '../../config/env';
+import { duplicateKeyError, isDuplicateKey } from '../users/duplicateKey';
 import { suggestUsername } from '../users/suggestUsername';
 import { User, type UserDocument } from '../users/user.model';
 import { toPublicUser } from '../users/user.serializer';
@@ -59,19 +59,6 @@ export async function startSession(
   return { accessToken: signAccessToken(user.id), refreshToken, persistent, user: toPublicUser(user) };
 }
 
-function isDuplicateKey(error: unknown): error is mongo.MongoServerError {
-  return error instanceof mongo.MongoServerError && error.code === 11000;
-}
-
-/** Maps a unique-index violation (two sign-ups racing for the same email or username) to a 409. */
-function duplicateKeyError(error: unknown, username: string) {
-  if (!isDuplicateKey(error)) return undefined;
-  const keys = Object.keys((error.keyPattern as Record<string, unknown> | undefined) ?? {});
-  if (keys.includes('email')) return emailTaken();
-  if (keys.includes('username')) return usernameTaken(username);
-  return undefined;
-}
-
 export async function signup(input: SignupData): Promise<Session> {
   const [emailExists, usernameExists] = await Promise.all([
     User.exists({ email: input.email }),
@@ -88,6 +75,7 @@ export async function signup(input: SignupData): Promise<Session> {
       username: input.username,
       email: input.email,
       passwordHash,
+      passwordChangedAt: new Date(),
     });
   } catch (error) {
     throw duplicateKeyError(error, input.username) ?? error;
@@ -112,8 +100,15 @@ export async function login(input: LoginData): Promise<Session> {
  */
 async function linkGoogle(user: UserDocument, googleId: string): Promise<void> {
   const hadPassword = Boolean(user.passwordHash);
-  await User.updateOne({ _id: user._id }, { $set: { googleId }, $unset: { passwordHash: 1 } });
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: { googleId },
+      $unset: { passwordHash: 1, passwordChangedAt: 1 },
+    },
+  );
   user.googleId = googleId;
+  user.passwordChangedAt = null;
   if (hadPassword) {
     await Promise.all([
       RefreshToken.deleteMany({ userId: user._id }),
@@ -203,6 +198,11 @@ export async function logout(rawToken: string | undefined): Promise<void> {
   if (!rawToken) return;
   const token = await RefreshToken.findOne({ tokenHash: hashToken(rawToken) });
   if (token) await RefreshToken.deleteMany({ familyId: token.familyId });
+}
+
+/** Signs the account out on every device, this one included. */
+export async function logoutAll(userId: string): Promise<void> {
+  await RefreshToken.deleteMany({ userId });
 }
 
 export async function getMe(userId: string): Promise<PublicUser> {

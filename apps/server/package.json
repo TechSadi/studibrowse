@@ -6,12 +6,14 @@
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
     "build": "tsup",
-    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "start": "node --enable-source-maps --env-file-if-exists=../../.env dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "e2e:server": "tsx src/test/e2eServer.ts"
   },
   "dependencies": {
+    "@sentry/node": "^11.10.0",
     "@studibrowse/shared": "workspace:*",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
@@ -36,6 +38,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.6.6",
     "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "5.0.5",
     "mongodb-memory-server": "^11.3.0",
     "pino-pretty": "^13.2.0",
     "socket.io-client": "^4.8.4",

@@ -31,8 +31,11 @@ export type RoomSessionState =
   | { status: 'joining' }
   /** `rejoining`: the connection dropped; the room stays on screen while it reconnects. */
   | { status: 'joined' | 'rejoining'; joined: JoinedRoom }
-  /** You left with Leave. The room as it was stays here for the session summary. */
-  | { status: 'left'; joined: JoinedRoom }
+  /**
+   * You left with Leave (`left`), or the host closed the room (`closedByHost`). The room as it was stays here
+   * for the session summary.
+   */
+  | { status: 'left' | 'closedByHost'; joined: JoinedRoom }
   | { status: EndedStatus }
   | { status: 'error'; message: string };
 
@@ -47,6 +50,7 @@ export type RoomSessionAction =
   | { type: 'resourceAdded'; resource: RoomResource }
   | { type: 'resourceRemoved'; resourceId: string }
   | { type: 'removed' }
+  | { type: 'closed' }
   | { type: 'left' }
   | { type: 'rejoin' };
 
@@ -54,12 +58,14 @@ const ENDED_BY_CODE: Record<string, EndedStatus> = {
   ROOM_FULL: 'full',
   ROOM_CLOSED: 'closed',
   ROOM_NOT_FOUND: 'notFound',
+  REMOVED_FROM_ROOM: 'removed',
 };
 
 export const initialRoomSession: RoomSessionState = { status: 'joining' };
 
 const ENDED: ReadonlySet<RoomSessionState['status']> = new Set([
   'left',
+  'closedByHost',
   'full',
   'closed',
   'notFound',
@@ -129,6 +135,11 @@ export function roomSessionReducer(state: RoomSessionState, action: RoomSessionA
       }));
     case 'removed':
       return { status: 'removed' };
+    case 'closed':
+      // Also after Leave: the summary stays, now without Rejoin.
+      return state.status === 'joined' || state.status === 'rejoining' || state.status === 'left'
+        ? { status: 'closedByHost', joined: state.joined }
+        : state;
     case 'left':
       return state.status === 'joined' || state.status === 'rejoining'
         ? { status: 'left', joined: state.joined }

@@ -143,7 +143,7 @@ REST handles everything that's requested once (login, profiles, room lists, hist
 | sessions | roomId, roomName, startedAt, endedAt, participants [{ userId, focusedMins }], goalsDone, roundsCompleted | One per finished timer run; this powers room tracking and Progress |
 | messages | roomId, userId, text, createdAt | Index on roomId + createdAt; load the last 50 on join |
 | resources | roomId, userId, type (link or file), title, url, size, createdAt | Store files in Cloudinary or S3, and only the URL in MongoDB |
-| notifications | userId, type, roomId, text, read, createdAt | Feeds the in-app bell |
+| notifications | userId, type, roomId, roomName, text, read, createdAt | Feeds the in-app bell. Joins to the same room within a minute are grouped into one |
 
 **Socket.IO events:**
 
@@ -160,7 +160,7 @@ REST handles everything that's requested once (login, profiles, room lists, hist
 | resource:add / resource:new | both | Saves a link or file and broadcasts it |
 | host:transfer / member:remove | client > server | Host controls |
 | session:logged | server > room | Last round finished; updated room totals |
-| notification:new | server > user | Room started, room full, someone joined, round ended |
+| notification:new | server > user | Room started (to the host's followers, public rooms only), room full and someone joined (to the host), round ended (to everyone in the room) |
 
 Authenticate sockets by passing the JWT in the handshake (`io(url, { auth: { token } })`) and checking it in `io.use()`. For version 1, presence lives in memory on the server. Send each user's notifications to a private Socket.IO room named after their user id, and save them to the notifications collection so the bell still works after a reload.
 

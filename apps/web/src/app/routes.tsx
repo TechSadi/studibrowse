@@ -1,59 +1,149 @@
+import type { ComponentType } from 'react';
 import type { RouteObject } from 'react-router';
 import { AppShell, type ShellRouteHandle } from '../components/layout/AppShell';
-import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { OnboardingRoute, PublicOnlyRoute, RequireAuth, RequireOnboarded } from '../features/auth/guards';
-import { LoginPage } from '../features/auth/LoginPage';
-import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
-import { SignupPage } from '../features/auth/SignupPage';
-import { HomePage } from '../features/home/HomePage';
-import { InvitePage } from '../features/invite/InvitePage';
-import { OnboardingPage } from '../features/onboarding/OnboardingPage';
-import { ProgressPage } from '../features/progress/ProgressPage';
-import { RoomPage } from '../features/room/RoomPage';
 import { WelcomePage } from '../features/welcome/WelcomePage';
 import { NotFoundPage } from './NotFoundPage';
-import { NotificationsPage, ProfilePage, SettingsPage } from './placeholderPages';
+import { RouteErrorPage } from './RouteErrorPage';
+import { RouteFallback } from './RouteFallback';
 
 const shell = (crumb: string): ShellRouteHandle => ({ crumb });
 
+/**
+ * Each page is its own chunk, downloaded when its route is first matched. The landing page and the
+ * guards and shell (small, and needed on every visit) stay in the main bundle.
+ */
+function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType): RouteObject['lazy'] {
+  return async () => ({ Component: pick(await load()) });
+}
+
 export const routes: RouteObject[] = [
   {
-    // Signed-in users skip these and go to onboarding or Home.
-    element: <PublicOnlyRoute />,
+    HydrateFallback: RouteFallback,
+    // Catches render errors and failed page downloads anywhere below, and reports them.
+    ErrorBoundary: RouteErrorPage,
     children: [
-      { path: '/', element: <WelcomePage /> },
-      { path: '/signup', element: <SignupPage /> },
-      { path: '/login', element: <LoginPage /> },
-      { path: '/forgot-password', element: <ForgotPasswordPage /> },
-    ],
-  },
-  // Reachable signed in or out: the link comes from an email.
-  { path: '/reset-password', element: <ResetPasswordPage /> },
-  // Invite links are shared with people who may not have an account yet.
-  { path: '/r/:inviteCode', element: <InvitePage /> },
-  {
-    element: <RequireAuth />,
-    children: [
-      { element: <OnboardingRoute />, children: [{ path: '/onboarding', element: <OnboardingPage /> }] },
-      // Accounts that haven't finished onboarding are sent there first.
       {
-        element: <RequireOnboarded />,
+        // Signed-in users skip these and go to onboarding or Home.
+        element: <PublicOnlyRoute />,
         children: [
+          { path: '/', element: <WelcomePage /> },
           {
-            element: <AppShell />,
-            children: [
-              { path: '/home', element: <HomePage />, handle: shell('Home') },
-              { path: '/progress', element: <ProgressPage />, handle: shell('Your progress') },
-              { path: '/notifications', element: <NotificationsPage />, handle: shell('Notifications') },
-              { path: '/settings', element: <SettingsPage />, handle: shell('Settings') },
-              { path: '/u/:username', element: <ProfilePage />, handle: shell('Profile') },
-            ],
+            path: '/signup',
+            lazy: page(
+              () => import('../features/auth/SignupPage'),
+              (m) => m.SignupPage,
+            ),
           },
-          // The focus room is distraction-free: no sidebar.
-          { path: '/room/:roomId', element: <RoomPage /> },
+          {
+            path: '/login',
+            lazy: page(
+              () => import('../features/auth/LoginPage'),
+              (m) => m.LoginPage,
+            ),
+          },
+          {
+            path: '/forgot-password',
+            lazy: page(
+              () => import('../features/auth/ForgotPasswordPage'),
+              (m) => m.ForgotPasswordPage,
+            ),
+          },
         ],
       },
+      // Reachable signed in or out: the link comes from an email.
+      {
+        path: '/reset-password',
+        lazy: page(
+          () => import('../features/auth/ResetPasswordPage'),
+          (m) => m.ResetPasswordPage,
+        ),
+      },
+      // Invite links are shared with people who may not have an account yet.
+      {
+        path: '/r/:inviteCode',
+        lazy: page(
+          () => import('../features/invite/InvitePage'),
+          (m) => m.InvitePage,
+        ),
+      },
+      {
+        element: <RequireAuth />,
+        children: [
+          {
+            element: <OnboardingRoute />,
+            children: [
+              {
+                path: '/onboarding',
+                lazy: page(
+                  () => import('../features/onboarding/OnboardingPage'),
+                  (m) => m.OnboardingPage,
+                ),
+              },
+            ],
+          },
+          // Accounts that haven't finished onboarding are sent there first.
+          {
+            element: <RequireOnboarded />,
+            children: [
+              {
+                element: <AppShell />,
+                children: [
+                  {
+                    path: '/home',
+                    lazy: page(
+                      () => import('../features/home/HomePage'),
+                      (m) => m.HomePage,
+                    ),
+                    handle: shell('Home'),
+                  },
+                  {
+                    path: '/progress',
+                    lazy: page(
+                      () => import('../features/progress/ProgressPage'),
+                      (m) => m.ProgressPage,
+                    ),
+                    handle: shell('Your progress'),
+                  },
+                  {
+                    path: '/notifications',
+                    lazy: page(
+                      () => import('../features/notifications/NotificationsPage'),
+                      (m) => m.NotificationsPage,
+                    ),
+                    handle: shell('Notifications'),
+                  },
+                  {
+                    path: '/settings',
+                    lazy: page(
+                      () => import('../features/settings/SettingsPage'),
+                      (m) => m.SettingsPage,
+                    ),
+                    handle: shell('Settings'),
+                  },
+                  {
+                    path: '/u/:username',
+                    lazy: page(
+                      () => import('../features/profile/ProfilePage'),
+                      (m) => m.ProfilePage,
+                    ),
+                    handle: shell('Profile'),
+                  },
+                ],
+              },
+              // The focus room is distraction-free: no sidebar. It's the heaviest page, so it loads on its own.
+              {
+                path: '/room/:roomId',
+                lazy: page(
+                  () => import('../features/room/RoomPage'),
+                  (m) => m.RoomPage,
+                ),
+              },
+            ],
+          },
+        ],
+      },
+      { path: '*', element: <NotFoundPage /> },
     ],
   },
-  { path: '*', element: <NotFoundPage /> },
 ];
