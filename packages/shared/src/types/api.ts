@@ -9,9 +9,12 @@ export interface ApiErrorBody {
   };
 }
 
+/** GET /api/health. `ok` is false (status 503) while the database is down or the server is shutting down. */
 export interface HealthResponse {
-  ok: true;
+  ok: boolean;
   db: 'up' | 'down';
+  /** The deployed commit, when the platform provides it. */
+  release?: string;
 }
 
 /**

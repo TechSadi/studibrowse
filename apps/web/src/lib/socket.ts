@@ -141,7 +141,7 @@ function openSocket(io: SocketIoModule['io']): AppSocket {
     auth: (cb) => cb({ token: getAccessToken() }),
   };
   // The JWT in the handshake is the only credential, so a cross-origin socket needs no cookie.
-  const created: AppSocket = config.socketUrl ? io(config.socketUrl, options) : io(options);
+  const created: AppSocket = config.apiUrl ? io(config.apiUrl, options) : io(options);
   socket = created;
   hadTrouble = false;
   refreshedSinceConnect = false;

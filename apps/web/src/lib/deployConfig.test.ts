@@ -49,6 +49,15 @@ describe('vercel.json', () => {
     expect(directive('connect-src')).toContain(apiOrigin.replace(/^https:/, 'wss:'));
   });
 
+  it('lets the browser send error reports to Sentry', () => {
+    expect(directive('connect-src')).toContain('https://*.ingest.sentry.io');
+    expect(directive('connect-src')).toContain('https://*.ingest.us.sentry.io');
+  });
+
+  it('never deploys on a git push: only the CI-gated deploy workflow does', () => {
+    expect(vercelConfig.git.deploymentEnabled).toBe(false);
+  });
+
   it('sets HSTS and nosniff', () => {
     const keys = headers.map((header) => header.key);
     expect(keys).toContain('Strict-Transport-Security');

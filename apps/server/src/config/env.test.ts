@@ -125,4 +125,25 @@ describe('parseEnv', () => {
     const result = parseEnv({ ...valid, MONGODB_URI: 'http://localhost:27017' });
     expect(result.ok).toBe(false);
   });
+
+  it('leaves Sentry optional, even in production', () => {
+    const result = parseEnv({ ...valid, SENTRY_DSN: '' });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.env.SENTRY_DSN).toBeUndefined();
+    expect(result.ok && result.env.release).toBeUndefined();
+  });
+
+  it('rejects a Sentry DSN that is not a URL', () => {
+    const result = parseEnv({ ...valid, SENTRY_DSN: 'not a dsn' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problems[0]).toMatch(/^SENTRY_DSN /);
+  });
+
+  it('takes the release from SENTRY_RELEASE, else from the commit Render deployed', () => {
+    const fromCommit = parseEnv({ ...valid, RENDER_GIT_COMMIT: 'abc123' });
+    expect(fromCommit.ok && fromCommit.env.release).toBe('abc123');
+    const explicit = parseEnv({ ...valid, RENDER_GIT_COMMIT: 'abc123', SENTRY_RELEASE: 'v1.2.0' });
+    expect(explicit.ok && explicit.env.release).toBe('v1.2.0');
+  });
 });

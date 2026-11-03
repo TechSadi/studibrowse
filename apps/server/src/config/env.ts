@@ -35,6 +35,11 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: optionalString,
   CLOUDINARY_API_KEY: optionalString,
   CLOUDINARY_API_SECRET: optionalString,
+  // Error tracking. Blank turns Sentry off (local dev, tests); production logs a warning at boot instead of failing.
+  SENTRY_DSN: optionalString.pipe(z.url({ error: 'must be a URL (the DSN from Sentry)' }).optional()),
+  // Tags each event with the deployed commit. Render sets RENDER_GIT_COMMIT itself.
+  SENTRY_RELEASE: optionalString,
+  RENDER_GIT_COMMIT: optionalString,
 });
 
 const REQUIRED_IN_PRODUCTION = [
@@ -67,13 +72,19 @@ const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
 });
 
-export type Env = z.infer<typeof envSchema>;
+export type Env = z.infer<typeof envSchema> & {
+  /** SENTRY_RELEASE, else the deployed commit, else undefined. */
+  release: string | undefined;
+};
 
 export type ParseEnvResult = { ok: true; env: Env } | { ok: false; problems: string[] };
 
 export function parseEnv(source: Record<string, string | undefined>): ParseEnvResult {
   const result = envSchemaChecked.safeParse(source);
-  if (result.success) return { ok: true, env: result.data };
+  if (result.success) {
+    const release = result.data.SENTRY_RELEASE ?? result.data.RENDER_GIT_COMMIT;
+    return { ok: true, env: { ...result.data, release } };
+  }
   const problems = result.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`);
   return { ok: false, problems };
 }

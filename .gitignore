@@ -10,6 +10,9 @@ dist/
 .env.*
 !.env.example
 
+# Vercel CLI link and pulled env (vercel link / vercel pull)
+.vercel/
+
 # Test output
 coverage/
 playwright-report/

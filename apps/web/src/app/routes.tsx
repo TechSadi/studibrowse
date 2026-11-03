@@ -4,6 +4,7 @@ import { AppShell, type ShellRouteHandle } from '../components/layout/AppShell';
 import { OnboardingRoute, PublicOnlyRoute, RequireAuth, RequireOnboarded } from '../features/auth/guards';
 import { WelcomePage } from '../features/welcome/WelcomePage';
 import { NotFoundPage } from './NotFoundPage';
+import { RouteErrorPage } from './RouteErrorPage';
 import { RouteFallback } from './RouteFallback';
 
 const shell = (crumb: string): ShellRouteHandle => ({ crumb });
@@ -19,6 +20,8 @@ function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType): Ro
 export const routes: RouteObject[] = [
   {
     HydrateFallback: RouteFallback,
+    // Catches render errors and failed page downloads anywhere below, and reports them.
+    ErrorBoundary: RouteErrorPage,
     children: [
       {
         // Signed-in users skip these and go to onboarding or Home.

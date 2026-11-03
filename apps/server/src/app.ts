@@ -21,6 +21,10 @@ export const JSON_BODY_LIMIT = '100kb';
 
 export interface AppDependencies {
   isDatabaseConnected: () => boolean;
+  /** For /api/health. The server passes its shutdown flag; defaults to never. */
+  isShuttingDown?: () => boolean;
+  /** Shown by /api/health. Defaults to env.release (the deployed commit). */
+  release?: string;
   clientOrigin: string;
   /** Proxies in front of the server, for req.ip (see TRUST_PROXY in env.ts). Defaults to env.TRUST_PROXY. */
   trustProxy?: number;
@@ -39,6 +43,8 @@ export interface AppDependencies {
 /** Builds the Express app without listening, so tests can import it. */
 export function createApp({
   isDatabaseConnected,
+  isShuttingDown = () => false,
+  release = env.release,
   clientOrigin,
   trustProxy = env.TRUST_PROXY,
   emailService = createEmailService(env),
@@ -58,7 +64,7 @@ export function createApp({
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());
 
-  app.use('/api/health', createHealthRouter(isDatabaseConnected));
+  app.use('/api/health', createHealthRouter({ isDatabaseConnected, isShuttingDown, release }));
   // The password, email and Google endpoints are rate limited inside the router.
   app.use('/api/auth', createAuthRouter({ emailService, verifyGoogleToken }));
   app.use('/api/users', createUsersRouter({ onAccountDeleted }));

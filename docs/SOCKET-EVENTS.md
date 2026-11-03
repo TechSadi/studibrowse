@@ -4,7 +4,7 @@ Every real-time event, from the spec's Socket.IO events section (`docs/SPEC.md`)
 
 ## Connecting
 
-The client connects with `io(VITE_SOCKET_URL, { auth: { token: <access token> } })`. In development `VITE_SOCKET_URL` is empty and the socket uses the page's origin (the Vite proxy). In production the browser connects straight to the Render API origin, because Vercel can't proxy WebSockets; the token in the handshake is the only credential (no cookie), and Socket.IO's CORS allows only `CLIENT_ORIGIN`. The server's `io.use()` middleware verifies the token and stores the user id on `socket.data.userId`. A rejected handshake reaches the client's `connect_error` listener with `err.data = { code, message }`:
+The client connects with `io(VITE_API_URL, { auth: { token: <access token> } })`. In development `VITE_API_URL` is empty and the socket uses the page's origin (the Vite proxy). In production the browser connects straight to the Render API origin, because Vercel can't proxy WebSockets; the token in the handshake is the only credential (no cookie), and Socket.IO's CORS allows only `CLIENT_ORIGIN`. The server's `io.use()` middleware verifies the token and stores the user id on `socket.data.userId`. A rejected handshake reaches the client's `connect_error` listener with `err.data = { code, message }`:
 
 | Code | Meaning | What the web client does |
 | --- | --- | --- |

@@ -40,7 +40,7 @@ Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `A
 For everything live inside a room, for notifications, and for the lobby (the live list of public rooms on Home).
 
 ```
-web: io(VITE_SOCKET_URL, { auth: (cb) => cb({ token: <access token> }) })   (src/lib/socket.ts, after login)
+web: io(VITE_API_URL, { auth: (cb) => cb({ token: <access token> }) })   (src/lib/socket.ts, after login)
      (dev: same origin through the Vite proxy; prod: straight to Render, since Vercel can't proxy WebSockets)
   → io.use(socketAuth): verify the JWT, set socket.data.userId    (realtime/socketAuth.ts)
   → io.use: refuse a 21st open socket for the same user (MAX_SOCKETS_PER_USER, RATE_LIMITED)
@@ -367,6 +367,39 @@ A room's Files tab holds links and files (PDFs and images up to 10 MB). MongoDB 
 - **Timer:** `TimerStage.tsx` (memoised) holds the ring, controls and settings summary and is the only part that ticks. `timerView.ts` turns the server timer and the time left into what the ring shows (phase, clock, round, dots). The tab title shows the time left while a phase runs. The ring's `role="timer"` label gives the time left by the minute; a separate polite live region announces only the phase and round ("Short break. Round 2 of 4"), never the countdown. `useTimerSounds` plays Web Audio sounds (`chime.ts`) for everyone in the room: three quick rising notes when the host starts a run (from idle or done), and a soft two-note chime when a focus round or break ends. One mute switch covers both, saved in localStorage as `sb-sound`.
 - **Side panel:** Chat, Goals, People and Files as an ARIA tablist; every pane stays mounted so the chat keeps its draft. Below 1100px it is a drawer opened from the dock, which counts unread chat messages; while open it is a modal dialog that keeps Tab inside it (`lib/focusTrap.ts`, shared with `ModalShell` and the notification bell).
 - **Chat system lines:** `chat/systemLines.ts` adds grey lines to the chat on this device only ("You joined the room", "Round 1 complete · break started", "Maya is now the host"), worked out from timer and presence changes seen during the visit. They aren't saved or sent, so a reload or a late joiner doesn't see earlier ones. The Files pane is described under Shared resources.
+
+## Operations: health, logs, errors, shutdown
+
+How to deploy is in `docs/DEPLOY.md`. This section covers what the code does in production.
+
+- **Health (`modules/health/`):** `GET /api/health` answers 200 `{ ok: true, db: 'up' }` only when MongoDB is connected and the server isn't shutting down. Otherwise it answers 503 `{ ok: false, db }`. It also shows `release`, the deployed commit, when Render provides it (`RENDER_GIT_COMMIT`), so the deploy workflow can wait for the new instance. Render's health check (`render.yaml`) uses it, so a deploy that can't reach Atlas never goes live, and an instance that's draining stops getting traffic. The request logger skips it.
+- **Logs (`lib/logger.ts`):** pino, one JSON line per event in production, pretty-printed in development.
+  - Every line has `service`, `env`, `release` (the deployed commit), an ISO `time` and a text `level` (`"error"`, not `50`).
+  - Each request gets one line with `req.id` (also sent back as `X-Request-Id`), method, url and status.
+  - Authorization, Cookie and Set-Cookie headers are redacted.
+  - Lifecycle messages put their values in fields, e.g. `{ port }`, `{ signal }`.
+- **Errors (`lib/monitoring.ts`, Sentry):** off without `SENTRY_DSN`.
+  - One rule decides what's reported: every log at error level or above that carries an `err`. The pino `logMethod` hook (`reportLoggedError`) sends it, with the log's other fields and message as context.
+  - That covers the REST error handler's 500s, the socket wrapper's INTERNAL_ERRORs, background jobs, and unhandled rejections and exceptions. AppErrors are answers and never logged as errors, so they're never reported.
+  - Nothing personal is collected (`dataCollection` all off). `scrubEvent` also keeps only the request's method and path, and the user's id.
+  - `node --enable-source-maps` makes stack traces point at TypeScript lines, in logs and in Sentry, with no upload.
+- **Errors on the web (`lib/errorTracking.ts`, Sentry):** off without `VITE_SENTRY_DSN`.
+  - `initErrorTracking()` runs in `main.tsx` before the first render. Uncaught errors and rejections are reported automatically.
+  - `RouteErrorPage` is the root route's `ErrorBoundary`. It shows "Something went wrong" with Reload, and reports the error. This covers render errors and page chunks that fail to download after a deploy.
+  - ApiErrors under 500 are dropped: they're answers the screen already shows. Query strings are stripped from the page URL and from breadcrumbs, because reset tokens travel in them.
+  - Source maps are built only when `SENTRY_AUTH_TOKEN` is set. `@sentry/vite-plugin` uploads them and then deletes them from `dist`, so they're never served.
+  - The release is `SENTRY_RELEASE` (set by the deploy workflow), else `VERCEL_GIT_COMMIT_SHA`.
+- **Process handlers (`index.ts`):**
+  - An unhandled rejection is logged (and so reported); the process keeps running.
+  - An uncaught exception is logged at fatal level, then the process exits with code 1 and Render starts a fresh instance.
+  - Sentry's own handlers for these are turned off, so nothing is reported twice.
+- **Graceful shutdown (`index.ts`):** on SIGTERM or SIGINT the server first sets the shutting-down flag, so health turns 503. Then it:
+  1. stops the cleanup job and the timers;
+  2. closes Socket.IO and the HTTP server, and disconnects MongoDB;
+  3. sends queued Sentry events (2 s at most);
+  4. flushes the logs and exits.
+
+  Anything still running after 10 s is cut off. Render waits 30 s.
 
 ## Test coverage
 

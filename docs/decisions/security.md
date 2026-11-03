@@ -16,7 +16,7 @@ Socket.IO: browser ──wss─────────────────�
 - **REST goes through Vercel's `/api/*` rewrite** (`apps/web/vercel.json`), so for the browser the API is on the same origin as the page.
   - The refresh cookie stays first-party (`httpOnly; Secure; SameSite=Lax; Path=/api/auth`). A cross-site page can't make the browser send it on a POST, so the cookie endpoints need no CSRF token.
   - Pages on other origins can't read API responses: CORS allows only `CLIENT_ORIGIN`.
-- **Socket.IO connects straight to Render** (`VITE_SOCKET_URL`), because Vercel can't proxy WebSockets.
+- **Socket.IO connects straight to Render** (`VITE_API_URL`), because Vercel can't proxy WebSockets.
   - The only credential is the access token in the handshake (`io(url, { auth: { token } })`), never a cookie. That means cross-site WebSocket hijacking has nothing to ride on.
   - Socket.IO's CORS allows only `CLIENT_ORIGIN`.
 
@@ -90,11 +90,22 @@ There's a new `createUserRateLimiter`, keyed by user id, which runs after `requi
     - Scripts: only the app's own, Google sign-in (`accounts.google.com/gsi/client`), and the inline theme script, allowed by its SHA-256 hash. There is no `'unsafe-inline'` and no `'unsafe-eval'`.
     - Styles: Google Fonts and Google sign-in.
     - Images: the app's own, `data:`, and Cloudinary.
-    - Connections: the app's own, the Render API (`https` and `wss`), Cloudinary uploads, and Google sign-in.
+    - Connections: the app's own, the Render API (`https` and `wss`), Cloudinary uploads, Google sign-in, and Sentry's ingest hosts (error reports).
     - `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
   - **Other headers:** HSTS (1 year), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a `Permissions-Policy` that turns off camera, microphone, geolocation and payment.
   - **`src/lib/deployConfig.test.ts`** keeps this file honest. It fails if the inline script in `index.html` changes without its hash, if the rewrite and the `connect-src` entries point at different API origins, or if script-src ever gains `'unsafe-inline'` or `'unsafe-eval'`.
-- **`VITE_SOCKET_URL`** (`lib/config.ts`, `lib/socket.ts`) is where the socket connects. Empty means the same origin, which is what dev uses.
+- **`VITE_API_URL`** (`lib/config.ts`, `lib/socket.ts`) is where the socket connects. Empty means the same origin, which is what dev uses. REST never uses it, so the refresh cookie stays first-party.
+- **`"git": { "deploymentEnabled": false }`** in `vercel.json`: Vercel never builds on a push. Production deploys only come from `.github/workflows/deploy.yml` after CI passes, and there are no preview deployments talking to the production API.
+
+### Error tracking (Sentry)
+
+- Error reports are an outbound copy of data, so they collect as little as possible. On the server and on the web, `dataCollection` turns off user info, cookies, headers, bodies and query strings.
+- `beforeSend` is a second layer:
+  - On the server, it keeps only the request's method and path, and the user's id.
+  - On the web, it strips the query string from the page URL (reset tokens travel there) and drops ApiErrors under 500.
+  - Breadcrumb URLs lose their query strings too.
+- DSNs aren't secrets: they only allow sending events. `SENTRY_AUTH_TOKEN`, which uploads source maps, is a secret. It lives only in the Vercel project's env, never in a `VITE_` variable.
+- Web source maps are deleted from `dist` after upload, so the original source is never served.
 - **`safeNextPath`** refuses control characters and whitespace. Browsers strip tabs and newlines from URLs, so `/\t/evil.example` used to pass the `//` check and then turn into `//evil.example`.
 - **`FilesPanel`** only renders a resource's Open and Download links when the url is http(s) (`isWebUrl`, shared with `linkify.ts`). The server already guarantees this; the check is a second layer in case bad data ever got stored.
 
@@ -137,17 +148,6 @@ It also listed three low-impact notes. I accepted all three:
 
 ## Before the first deploy
 
-1. Replace the placeholder API origin `https://studibrowse-api.onrender.com` with the real Render URL in `apps/web/vercel.json`, in three places: the `/api` rewrite, and the `https:` and `wss:` entries in `connect-src`. `deployConfig.test.ts` fails if they disagree.
-2. **Render** environment:
-   - `NODE_ENV=production`
-   - `TRUST_PROXY=2`
-   - `CLIENT_ORIGIN=https://<vercel domain>`
-   - a newly generated `JWT_ACCESS_SECRET`
-   - the Google, Resend and Cloudinary variables
-3. **Vercel** environment:
-   - `VITE_SOCKET_URL=https://<render domain>`
-   - `VITE_GOOGLE_CLIENT_ID`
-   - root directory `apps/web`
-4. After deploying:
-   - Log `req.ip` once to confirm it shows your own address, not a proxy's. Adjust `TRUST_PROXY` if it doesn't.
-   - Open login (including the Google button), Home, a room (chat, upload a file) and a profile with the browser console open. Check for CSP violations.
+Moved to `docs/DEPLOY.md`, which lists every variable and step. Two security checks from it stay worth repeating:
+- Confirm `req.ip` in the Render logs is your own address, not a proxy's (`TRUST_PROXY=2`).
+- Click through login (with the Google button), Home, a room (chat, a file upload) and a profile with the console open, and look for CSP violations.

@@ -14,7 +14,8 @@ export const notFoundHandler: RequestHandler = (_req, res) => {
 
 /**
  * The only place error responses are written. Only AppError messages reach the client;
- * everything else is logged with its stack and answered with a generic 500, in every environment.
+ * everything else is logged with its stack (which also reports it to Sentry) and answered with a generic 500, in
+ * every environment.
  */
 export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   // Too late to send a JSON body; let Express close the connection.
