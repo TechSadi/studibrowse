@@ -19,6 +19,18 @@ export const INVITE_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 60 };
 /** Signed uploads per person per window: a busy study session shares a handful of files, not dozens. */
 export const UPLOAD_SIGN_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 30 };
 
+/** Rooms created per person per window. Each public one notifies every follower, so this caps that fan-out. */
+export const ROOM_CREATE_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 10 };
+
+/** Follows and unfollows together per person per window. */
+export const FOLLOW_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 60 };
+
+/** Profile and settings saves per person per window. Settings saves each toggle, so it's generous. */
+export const PROFILE_UPDATE_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 60 };
+
+/** Username checks per IP per window. The Sign up form checks as you type (debounced). */
+export const USERNAME_CHECK_RATE_LIMIT = { windowMs: 15 * 60 * 1000, limit: 120 };
+
 export interface RateLimitOptions {
   windowMs: number;
   limit: number;
@@ -40,6 +52,11 @@ export function createAuthRateLimiter(options: RateLimitOptions = AUTH_RATE_LIMI
         .json(errorBody('RATE_LIMITED', 'Too many attempts. Please wait a few minutes and try again.'));
     },
   });
+}
+
+/** Counts per signed-in person, so it must run after requireAuth. */
+export function createUserRateLimiter(options: Omit<RateLimitOptions, 'keyGenerator'>) {
+  return createAuthRateLimiter({ ...options, keyGenerator: (req) => `user:${req.userId ?? ''}` });
 }
 
 /**

@@ -44,7 +44,8 @@ export interface TestSocketServer {
 /** Starts the real HTTP + Socket.IO server on a random free port. */
 export async function startSocketServer({
   registerHandlers = [],
-}: { registerHandlers?: HandlerRegistrar[] } = {}): Promise<TestSocketServer> {
+  maxSocketsPerUser,
+}: { registerHandlers?: HandlerRegistrar[]; maxSocketsPerUser?: number } = {}): Promise<TestSocketServer> {
   const clientOrigin = 'http://localhost:5173';
   const httpServer = createServer(
     createApp({
@@ -54,7 +55,7 @@ export async function startSocketServer({
       onRoomCreated: (roomId) => broadcastRoomCard(io, roomId),
     }),
   );
-  const io = createIo(httpServer, { clientOrigin, registerHandlers });
+  const io = createIo(httpServer, { clientOrigin, registerHandlers, maxSocketsPerUser });
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
   const { port } = httpServer.address() as AddressInfo;
   const url = `http://127.0.0.1:${port}`;

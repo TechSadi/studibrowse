@@ -22,9 +22,10 @@ For things requested once: auth, profiles, room lists, history.
 
 ```
 web (TanStack Query → fetch /api/...)
-  → Vite proxy (dev) / same origin (prod)
-  → Express: request logger → helmet → CORS → JSON body (100 kB) → cookies
-             (the password, email and Google auth endpoints are also rate limited)
+  → Vite proxy (dev) / Vercel rewrite /api/* → Render (prod; same origin for the browser)
+  → Express: trust proxy (TRUST_PROXY) → request logger → helmet → CORS → JSON body (100 kB) → cookies
+             (auth endpoints per IP and per account; room creation, follows, profile saves and
+              upload signing per person; username checks and invite previews per IP)
   → router (modules/<feature>/*.routes.ts)  validates input with the shared zod schema
   → controller                              reads req, calls the service, writes res
   → service                                 business logic + Mongoose; never sees req/res
@@ -39,12 +40,15 @@ Protected routes run `requireAuth` (`middleware/requireAuth.ts`), which reads `A
 For everything live inside a room, for notifications, and for the lobby (the live list of public rooms on Home).
 
 ```
-web: io({ auth: (cb) => cb({ token: <access token> }) })      (src/lib/socket.ts, opened after login)
+web: io(VITE_SOCKET_URL, { auth: (cb) => cb({ token: <access token> }) })   (src/lib/socket.ts, after login)
+     (dev: same origin through the Vite proxy; prod: straight to Render, since Vercel can't proxy WebSockets)
   → io.use(socketAuth): verify the JWT, set socket.data.userId    (realtime/socketAuth.ts)
+  → io.use: refuse a 21st open socket for the same user (MAX_SOCKETS_PER_USER, RATE_LIMITED)
+  → payloads over 32 KB drop the connection (maxHttpBufferSize)
   → on connection: join private room `user:<id>`, add each feature's handlers   (realtime/io.ts)
   → client emits an event (e.g. timer:start) with an ack callback
   → onEvent wrapper (realtime/handler.ts):
-             1. per-socket rate limit, if the event has one
+             1. per-user rate limit (every event has one)
              2. validate payload with the shared zod schema (clientEventSchemas)
              3. handler: check permissions (member of the room? host?), call the service (same services as REST)
              4. ack { ok: true, data }, broadcast the result to `room:<roomId>`
@@ -54,7 +58,7 @@ A handler that fails validation or a permission check acks `{ ok: false, error: 
 
 - **Handshake errors** reach the client as `connect_error` with `err.data = { code, message }`: `UNAUTHENTICATED` or `TOKEN_EXPIRED`.
 - **Handlers** are registered per feature: `createIo(httpServer, { clientOrigin, registerHandlers })` takes a list of `(io, socket) => void` registrars: the room handlers (`realtime/handlers/room.handlers.ts`), the timer handlers (`realtime/handlers/timer.handlers.ts`), the chat handlers (`realtime/handlers/chat.handlers.ts`), the goal handlers (`realtime/handlers/goal.handlers.ts`) and the room settings handler (`realtime/handlers/settings.handlers.ts`). Tests pass their own.
-- **Rate limits** (`realtime/socketRateLimit.ts`, sliding window, in memory, per socket id, cleared on disconnect): `chat:send` 5 per 5 seconds (acks `RATE_LIMITED`), `chat:typing` 10 per 5 seconds (dropped).
+- **Rate limits** (`realtime/socketRateLimit.ts`, sliding window, in memory, **per user id**, so every tab and device shares one budget and reconnecting doesn't reset it; stale keys are pruned as it runs). Every client event has one; the values are in `docs/SOCKET-EVENTS.md` › Rate limits. Over the limit an event acks `RATE_LIMITED` (`chat:typing` is dropped).
 - **Chat** (`realtime/handlers/chat.handlers.ts`, `modules/chat/chat.service.ts`): `chat:send` checks the socket is in the room, saves the message, then sends `chat:new` to the whole room, sender included, so their other tabs stay in step. `chat:typing` is relayed to the rest of the room and never stored. Clients send `isTyping: true` at most every `TYPING_THROTTLE_MS` (2 s) while the draft isn't empty, and `false` when it's cleared, sent or the room is left; receivers stop showing someone `TYPING_CLEAR_MS` (3 s) after their last event, or as soon as their message arrives. On the web, `features/room/chat/` renders messages as React text (never as HTML) and turns only http(s) and `www.` links into `<a target="_blank" rel="noopener noreferrer">` (`linkify.ts`).
 - **Goals** (`realtime/handlers/goal.handlers.ts`, `modules/goals/goals.service.ts`): goals live on the room document. Every `goal:*` handler checks the socket is in the room, then changes the goals with one atomic update and sends `goal:update` with the full list to the whole room. `goal:add` refuses an 11th goal (`GOAL_LIMIT`) or a duplicate text (`GOAL_EXISTS`, because Room settings matches goals by text) in the update's filter, so racing adds can't get past the limit. Anyone in the room can tick a goal. Only its author or the current host (from presence, checked on every call) can remove it. On the web, `features/room/goals/useRoomGoals.ts` lays your unacknowledged changes over the latest `goal:update` (`pendingGoals.ts`), so they show at once. Dropping a change when its ack arrives is also the rollback when the server refuses it.
 - **Tests** use `test/socketHelpers.ts`: `startSocketServer()` runs the real server on a random port, and `connectUsers(n)` saves users and connects an authenticated socket.io-client for each.
@@ -91,9 +95,10 @@ Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). `passwordChangedAt` i
 | `GET /api/users/:username/followers?cursor=&limit=` | `{ users, nextCursor }`: the people who follow them, newest accounts first, 20 a page (shared `followListQuerySchema`). Each is a `FollowListUser` (`toFollowListUser()`: id, name, username, avatarColor, `studying` unless hidden, `isFollowing` for you) | 400 `VALIDATION_ERROR` (bad cursor), 404 `USER_NOT_FOUND`, 401 |
 | `GET /api/users/:username/following?cursor=&limit=` | Same shape: the people they follow, the most recently followed first. Deleted accounts are left out, so a page can come back short | 400 `VALIDATION_ERROR`, 404 `USER_NOT_FOUND`, 401 |
 
-Rate limits (`middleware/rateLimit.ts`, in memory):
+Rate limits (`middleware/rateLimit.ts`, in memory). Per-IP limits key on `req.ip`, which is only the visitor's address when `TRUST_PROXY` matches the proxies in front of the server (2 in production: Vercel, then Render). See `docs/decisions/security.md`.
 
-- **Per IP:** 20 requests per 15 minutes, shared by signup, login, forgot, reset and google. Refresh and `/me` aren't limited because they run on every page load.
+- **Per IP:** 20 requests per 15 minutes, shared by signup, login, forgot, reset and google. Refresh and `/me` aren't limited because they run on every page load. Also per IP: `GET /api/users/username-available` 120 per 15 minutes, `GET /api/rooms/invite/:code` 60 per 15 minutes.
+- **Per person** (after `requireAuth`, `createUserRateLimiter`): `POST /api/rooms` 10 per 15 minutes (each public room notifies every follower), follow and unfollow together 60 per 15 minutes, `PATCH /api/users/me` 60 per 15 minutes, upload signing 30 per 15 minutes.
 - **Per account:** login allows 10 *failed* attempts per identifier per 15 minutes, and forgot allows 3 requests per email per hour. These limiters key on the normalised body, so they run after validation. Any string counts the same whether or not an account uses it, so a 429 reveals nothing. The trade-off: someone can block password login for an account for 15 minutes. Google sign-in and password reset still work for its owner.
 
 ### Password reset

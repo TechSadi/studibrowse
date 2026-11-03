@@ -133,7 +133,7 @@ describe('chat:send', () => {
     expect(await savedCount(roomId)).toBe(0);
   });
 
-  it(`allows ${CHAT_RATE_LIMIT.limit} messages per socket in the window, then rate limits`, async () => {
+  it(`allows ${CHAT_RATE_LIMIT.limit} messages per person in the window, then rate limits`, async () => {
     const { people, roomId } = await roomWith(2);
     const [alice, bob] = people as [ConnectedUser, ConnectedUser];
 
@@ -151,7 +151,7 @@ describe('chat:send', () => {
     await silence;
     expect(await savedCount(roomId)).toBe(CHAT_RATE_LIMIT.limit);
 
-    // The limit is per socket: someone else in the room can still talk.
+    // The limit is per person: someone else in the room can still talk.
     expect((await emitAck(bob.client, 'chat:send', { roomId, text: 'Hi Alice' })).ok).toBe(true);
   });
 

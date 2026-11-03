@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseEnv } from './env';
+import { EXAMPLE_JWT_SECRET, parseEnv } from './env';
 
 const valid = {
   NODE_ENV: 'production',
   PORT: '8080',
   MONGODB_URI: 'mongodb://localhost:27017/studibrowse',
-  CLIENT_ORIGIN: 'http://localhost:5173',
+  CLIENT_ORIGIN: 'https://studibrowse.app',
   LOG_LEVEL: 'warn',
   JWT_ACCESS_SECRET: 'a-production-secret-of-at-least-32-chars',
   ACCESS_TOKEN_TTL_SECONDS: '600',
@@ -30,6 +30,7 @@ describe('parseEnv', () => {
         ACCESS_TOKEN_TTL_SECONDS: 600,
         REFRESH_TOKEN_TTL_DAYS: 14,
         BCRYPT_COST: 13,
+        TRUST_PROXY: 0,
       },
     });
   });
@@ -47,7 +48,30 @@ describe('parseEnv', () => {
       ACCESS_TOKEN_TTL_SECONDS: 900,
       REFRESH_TOKEN_TTL_DAYS: 30,
       BCRYPT_COST: 12,
+      TRUST_PROXY: 0,
     });
+  });
+
+  it('reads TRUST_PROXY as a hop count', () => {
+    const result = parseEnv({ ...valid, TRUST_PROXY: '2' });
+    expect(result.ok && result.env.TRUST_PROXY).toBe(2);
+    expect(parseEnv({ ...valid, TRUST_PROXY: 'true' }).ok).toBe(false);
+  });
+
+  it('requires an https CLIENT_ORIGIN in production only', () => {
+    const result = parseEnv({ ...valid, CLIENT_ORIGIN: 'http://studibrowse.app' });
+    expect(result).toEqual({ ok: false, problems: ['CLIENT_ORIGIN must use https in production'] });
+    expect(parseEnv({ ...valid, NODE_ENV: 'development', CLIENT_ORIGIN: 'http://localhost:5173' }).ok).toBe(
+      true,
+    );
+  });
+
+  it('refuses the .env.example JWT secret in production', () => {
+    const result = parseEnv({ ...valid, JWT_ACCESS_SECRET: EXAMPLE_JWT_SECRET });
+    expect(result.ok).toBe(false);
+    expect(parseEnv({ ...valid, NODE_ENV: 'development', JWT_ACCESS_SECRET: EXAMPLE_JWT_SECRET }).ok).toBe(
+      true,
+    );
   });
 
   it('rejects a short JWT secret', () => {

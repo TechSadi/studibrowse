@@ -4,12 +4,15 @@ Every real-time event, from the spec's Socket.IO events section (`docs/SPEC.md`)
 
 ## Connecting
 
-The client connects with `io({ auth: { token: <access token> } })`. The server's `io.use()` middleware verifies the token and stores the user id on `socket.data.userId`. A rejected handshake reaches the client's `connect_error` listener with `err.data = { code, message }`:
+The client connects with `io(VITE_SOCKET_URL, { auth: { token: <access token> } })`. In development `VITE_SOCKET_URL` is empty and the socket uses the page's origin (the Vite proxy). In production the browser connects straight to the Render API origin, because Vercel can't proxy WebSockets; the token in the handshake is the only credential (no cookie), and Socket.IO's CORS allows only `CLIENT_ORIGIN`. The server's `io.use()` middleware verifies the token and stores the user id on `socket.data.userId`. A rejected handshake reaches the client's `connect_error` listener with `err.data = { code, message }`:
 
 | Code | Meaning | What the web client does |
 | --- | --- | --- |
 | `UNAUTHENTICATED` | No token, not a string, bad signature, no user id | Ends the session (signed out) |
 | `TOKEN_EXPIRED` | The access token expired | Refreshes once and reconnects. Expired again straight after a refresh → ends the session |
+| `RATE_LIMITED` | The user already has 20 sockets open (`MAX_SOCKETS_PER_USER`) | Shows the connection as having trouble; closing other tabs and reloading fixes it |
+
+A message over 32 KB (`MAX_SOCKET_PAYLOAD_BYTES`, Socket.IO's `maxHttpBufferSize`) closes the connection; the largest valid payload (`room:settings`) is under 4 KB.
 
 On connect, every socket joins its user's private room `user:<id>`, so a notification reaches all of that user's tabs.
 
@@ -39,9 +42,9 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 | `room:closed` | server → room | `{ roomId }` | Server only. The host closed the room | n/a. Everyone's focus time is already saved, so the client shows the session summary at once, without Rejoin, and doesn't rejoin |
 | `presence:update` | server → room | `{ roomId, members: [{ userId, name, username, avatarColor, status, workingOn, isHost, joinedAt, focusingSince }] }` | Server only | n/a |
 | `status:set` | client → server | `{ roomId, status?: 'focusing' \| 'break' \| 'away', workingOn? }`. At least one of the two; `workingOn` is trimmed, up to 80 characters, and `''` clears it | Member (own status only). Error: `NOT_A_MEMBER` | Ack data: `{}`. Room gets `presence:update` |
-| `chat:send` | client → server | `{ roomId, text }`. `text` is trimmed, 1 to 1000 characters (`CHAT_TEXT_MAX`) | Member (`NOT_A_MEMBER` otherwise). 5 per 5 seconds per socket | Ack data: `{ message }`. Saved, then the whole room gets `chat:new`, sender included |
+| `chat:send` | client → server | `{ roomId, text }`. `text` is trimmed, 1 to 1000 characters (`CHAT_TEXT_MAX`) | Member (`NOT_A_MEMBER` otherwise). 5 per 5 seconds per person | Ack data: `{ message }`. Saved, then the whole room gets `chat:new`, sender included |
 | `chat:new` | server → room | `{ message: { id, roomId, userId, text, createdAt } }`. The sender's ack carries the same message, so clients skip ids they already have. In the history `room:join` sends, `userId` is null for a message whose author deleted their account (shown as "Deleted account") | Server only | n/a |
-| `chat:typing` | both | Client: `{ roomId, isTyping }`. Server: `{ roomId, userId, isTyping }` | Member. 10 per 5 seconds per socket | No ack. Sent to the rest of the room (your other tabs included). Clients send `true` at most every `TYPING_THROTTLE_MS` (2 s) and `false` when they stop; receivers clear someone after `TYPING_CLEAR_MS` (3 s) without a new event, or when their message arrives |
+| `chat:typing` | both | Client: `{ roomId, isTyping }`. Server: `{ roomId, userId, isTyping }` | Member. 10 per 5 seconds per person | No ack. Sent to the rest of the room (your other tabs included). Clients send `true` at most every `TYPING_THROTTLE_MS` (2 s) and `false` when they stop; receivers clear someone after `TYPING_CLEAR_MS` (3 s) without a new event, or when their message arrives |
 | `timer:start` | client → server | `{ roomId }` | Host | Ack data: `{}`. From `idle` or `done` starts focus round 1; when paused (or waiting for the host between phases) resumes. Room gets `timer:state` |
 | `timer:pause` | client → server | `{ roomId }` | Host | Ack data: `{}`. Only while running. Room gets `timer:state` |
 | `timer:skip` | client → server | `{ roomId }` | Host | Ack data: `{}`. Ends the current focus or break now. Room gets `timer:state` |
@@ -72,9 +75,22 @@ The codes every event can return are `VALIDATION_ERROR` (the message names the f
 
 **Disconnects are not leaves.** When a user's last socket in a room drops, they keep their place (and seat) for 30 seconds (`RECONNECT_GRACE_MS`); a `room:join` in that time picks up where they were, with the same `joinedAt` and status. Their focus time stops counting while no tab is connected. After the window their focus time is saved as for `room:leave`, they're removed and the room gets `presence:update`. When the host leaves for good (leave or window expired), the longest-present member becomes host and the same `presence:update` shows the new `isHost`.
 
-`goal:add`, `goal:toggle` and `goal:remove` are each limited to 10 per 5 seconds per socket (`GOAL_RATE_LIMIT`). `resource:add` and `resource:remove` are each limited to 5 per 10 seconds per socket (`RESOURCE_RATE_LIMIT`).
+## Rate limits
 
-Rate limits are per socket (so per tab), in memory, and live in `apps/server/src/realtime/socketRateLimit.ts`. The wrapper applies them to every handler for those events.
+Every client event is rate limited **per user**: all of someone's tabs and devices share one budget, and reconnecting doesn't reset it. Limits are in memory (one server process in v1) and live in `apps/server/src/realtime/socketRateLimit.ts`; the handler wrapper applies them before validation, so a handler can't forget one. Over the limit an event acks `RATE_LIMITED` (`chat:typing` is dropped).
+
+| Events | Limit | Constant |
+| --- | --- | --- |
+| `chat:send` | 5 per 5 s | `CHAT_RATE_LIMIT` |
+| `chat:typing` | 10 per 5 s | `TYPING_RATE_LIMIT` |
+| `goal:add`, `goal:toggle`, `goal:remove` | each 10 per 5 s | `GOAL_RATE_LIMIT` |
+| `resource:add`, `resource:remove` | each 5 per 10 s | `RESOURCE_RATE_LIMIT` |
+| `room:join`, `room:leave` | each 20 per 10 s | `ROOM_MEMBERSHIP_RATE_LIMIT` |
+| `status:set` | 10 per 5 s | `STATUS_RATE_LIMIT` |
+| `timer:start`, `timer:pause`, `timer:skip`, `timer:reset` | 20 per 10 s, shared | `TIMER_RATE_LIMIT` |
+| `room:settings`, `room:close`, `host:transfer`, `member:remove` | each 10 per 10 s | `HOST_ACTION_RATE_LIMIT` |
+| `follows:watch` | 10 per 10 s | `FOLLOWS_WATCH_RATE_LIMIT` |
+| `lobby:subscribe`, `lobby:unsubscribe` | 20 per 10 s, shared | `LOBBY_RATE_LIMIT` |
 
 ## Lobby
 

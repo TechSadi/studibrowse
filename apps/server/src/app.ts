@@ -22,6 +22,8 @@ export const JSON_BODY_LIMIT = '100kb';
 export interface AppDependencies {
   isDatabaseConnected: () => boolean;
   clientOrigin: string;
+  /** Proxies in front of the server, for req.ip (see TRUST_PROXY in env.ts). Defaults to env.TRUST_PROXY. */
+  trustProxy?: number;
   /** Defaults to Resend in production and the server log otherwise. Tests pass a fake. */
   emailService?: EmailService;
   /** Defaults to google-auth-library with GOOGLE_CLIENT_ID. Tests pass a fake. */
@@ -38,6 +40,7 @@ export interface AppDependencies {
 export function createApp({
   isDatabaseConnected,
   clientOrigin,
+  trustProxy = env.TRUST_PROXY,
   emailService = createEmailService(env),
   verifyGoogleToken = createGoogleVerifier(env.GOOGLE_CLIENT_ID),
   storage = createStorageService(env),
@@ -46,6 +49,8 @@ export function createApp({
 }: AppDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
+  // Rate limits key on req.ip; behind Vercel and Render's proxies it's only the visitor's when this is right.
+  app.set('trust proxy', trustProxy);
   app.use(requestLogger);
   app.use(helmet());
   // credentials: the refresh token travels in a cookie.

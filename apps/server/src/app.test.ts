@@ -50,6 +50,28 @@ describe('app security middleware', () => {
     expect(blocked.body.error.code).toBe('RATE_LIMITED');
   });
 
+  async function exhaustAuthLimit(app: ReturnType<typeof makeApp>, ip: string) {
+    for (let i = 0; i < AUTH_RATE_LIMIT.limit; i++) {
+      await request(app).post('/api/auth/login').set('X-Forwarded-For', ip);
+    }
+  }
+
+  it('with trustProxy, counts each visitor from X-Forwarded-For instead of the proxy', async () => {
+    const app = createApp({ isDatabaseConnected: () => true, clientOrigin: CLIENT_ORIGIN, trustProxy: 1 });
+    await exhaustAuthLimit(app, '203.0.113.1');
+    const sameVisitor = await request(app).post('/api/auth/login').set('X-Forwarded-For', '203.0.113.1');
+    expect(sameVisitor.status).toBe(429);
+    const otherVisitor = await request(app).post('/api/auth/login').set('X-Forwarded-For', '203.0.113.2');
+    expect(otherVisitor.status).not.toBe(429);
+  });
+
+  it('without trustProxy, ignores X-Forwarded-For so it can’t be spoofed to dodge the limit', async () => {
+    const app = createApp({ isDatabaseConnected: () => true, clientOrigin: CLIENT_ORIGIN, trustProxy: 0 });
+    await exhaustAuthLimit(app, '203.0.113.1');
+    const spoofed = await request(app).post('/api/auth/login').set('X-Forwarded-For', '203.0.113.2');
+    expect(spoofed.status).toBe(429);
+  });
+
   it('does not rate limit other routes', async () => {
     const app = makeApp();
     for (let i = 0; i <= AUTH_RATE_LIMIT.limit; i++) {

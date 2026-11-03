@@ -5,6 +5,7 @@ import {
   googleAuthSchema,
   loginSchema,
   passwordSchema,
+  utf8ByteLength,
   resetPasswordSchema,
   signupSchema,
   usernameSchema,
@@ -47,6 +48,21 @@ describe('passwordSchema', () => {
   it.each(['short1!', 'onlyletters', 'a1'.repeat(37)])('rejects %j', (value) => {
     expect(passwordSchema.safeParse(value).success).toBe(false);
   });
+
+  it('measures UTF-8 bytes', () => {
+    expect(utf8ByteLength('abc')).toBe(3);
+    expect(utf8ByteLength('é')).toBe(2);
+    expect(utf8ByteLength('€')).toBe(3);
+    expect(utf8ByteLength('😀')).toBe(4);
+  });
+
+  it('counts bytes, as bcrypt does: 36 two-byte letters fit, 37 do not', () => {
+    // 'é' is 2 bytes in UTF-8; the '1' makes it pass the number-or-symbol rule.
+    expect(passwordSchema.safeParse(`${'é'.repeat(35)}1`).success).toBe(true);
+    const tooLong = passwordSchema.safeParse(`${'é'.repeat(36)}1`);
+    expect(tooLong.success).toBe(false);
+    expect(tooLong.error?.issues[0]?.message).toBe('That password is too long. Try a shorter one.');
+  });
 });
 
 describe('signupSchema', () => {
@@ -75,6 +91,11 @@ describe('loginSchema', () => {
 
   it('requires a password', () => {
     expect(loginSchema.safeParse({ identifier: 'alex', password: '' }).success).toBe(false);
+  });
+
+  it('caps the identifier at the longest possible email', () => {
+    expect(loginSchema.safeParse({ identifier: 'a'.repeat(254), password: 'x' }).success).toBe(true);
+    expect(loginSchema.safeParse({ identifier: 'a'.repeat(255), password: 'x' }).success).toBe(false);
   });
 });
 

@@ -7,7 +7,13 @@ import {
   uploadSignSchema,
 } from '@studibrowse/shared';
 import type { StorageService } from '../../lib/storage';
-import { createAuthRateLimiter, INVITE_RATE_LIMIT, UPLOAD_SIGN_RATE_LIMIT } from '../../middleware/rateLimit';
+import {
+  createAuthRateLimiter,
+  createUserRateLimiter,
+  INVITE_RATE_LIMIT,
+  ROOM_CREATE_RATE_LIMIT,
+  UPLOAD_SIGN_RATE_LIMIT,
+} from '../../middleware/rateLimit';
 import { requireAuth } from '../../middleware/requireAuth';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate';
 import { createUploadsController } from '../resources/uploads.controller';
@@ -23,7 +29,14 @@ export function createRoomsRouter({
   const router = Router();
   const controller = createRoomsController({ onRoomCreated });
   const uploads = createUploadsController(storage);
-  router.post('/', requireAuth, validateBody(createRoomSchema), controller.create);
+  // Counted per person: each new public room notifies every follower.
+  router.post(
+    '/',
+    requireAuth,
+    createUserRateLimiter(ROOM_CREATE_RATE_LIMIT),
+    validateBody(createRoomSchema),
+    controller.create,
+  );
   router.get('/public', requireAuth, validateQuery(publicRoomsQuerySchema), controller.listPublic);
   // Public: invite links are opened by people who may not have an account yet. Rate limited against guessing.
   router.get(
@@ -37,7 +50,7 @@ export function createRoomsRouter({
   router.post(
     '/:id/uploads/sign',
     requireAuth,
-    createAuthRateLimiter({ ...UPLOAD_SIGN_RATE_LIMIT, keyGenerator: (req) => `user:${req.userId}` }),
+    createUserRateLimiter(UPLOAD_SIGN_RATE_LIMIT),
     validateParams(roomIdParamsSchema),
     validateBody(uploadSignSchema),
     uploads.sign,

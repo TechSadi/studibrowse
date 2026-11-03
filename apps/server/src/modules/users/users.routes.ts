@@ -8,7 +8,14 @@ import {
   usernameAvailabilityQuerySchema,
   usernameParamsSchema,
 } from '@studibrowse/shared';
-import { createAuthRateLimiter, PASSWORD_CHECK_RATE_LIMIT } from '../../middleware/rateLimit';
+import {
+  createAuthRateLimiter,
+  createUserRateLimiter,
+  FOLLOW_RATE_LIMIT,
+  PASSWORD_CHECK_RATE_LIMIT,
+  PROFILE_UPDATE_RATE_LIMIT,
+  USERNAME_CHECK_RATE_LIMIT,
+} from '../../middleware/rateLimit';
 import { requireAuth } from '../../middleware/requireAuth';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate';
 import * as controller from './users.controller';
@@ -26,13 +33,22 @@ export function createUsersRouter({ onAccountDeleted }: UsersRouterDependencies 
     keyGenerator: (req) => `password-check:${req.userId ?? ''}`,
     skipSuccessfulRequests: true,
   });
-  // Public: the Sign up form checks the username as you type.
+  // One budget for following and unfollowing, so toggling back and forth counts too.
+  const followLimiter = createUserRateLimiter(FOLLOW_RATE_LIMIT);
+  // Public: the Sign up form checks the username as you type. Limited per IP against bulk probing.
   router.get(
     '/username-available',
+    createAuthRateLimiter(USERNAME_CHECK_RATE_LIMIT),
     validateQuery(usernameAvailabilityQuerySchema),
     controller.usernameAvailable,
   );
-  router.patch('/me', requireAuth, validateBody(updateMeSchema), controller.updateMe);
+  router.patch(
+    '/me',
+    requireAuth,
+    createUserRateLimiter(PROFILE_UPDATE_RATE_LIMIT),
+    validateBody(updateMeSchema),
+    controller.updateMe,
+  );
   router.delete(
     '/me',
     requireAuth,
@@ -48,8 +64,20 @@ export function createUsersRouter({ onAccountDeleted }: UsersRouterDependencies 
   );
   router.get('/me/following', requireAuth, controller.following);
   router.get('/suggestions', requireAuth, controller.suggestions);
-  router.post('/:id/follow', requireAuth, validateParams(userIdParamsSchema), controller.follow);
-  router.delete('/:id/follow', requireAuth, validateParams(userIdParamsSchema), controller.unfollow);
+  router.post(
+    '/:id/follow',
+    requireAuth,
+    followLimiter,
+    validateParams(userIdParamsSchema),
+    controller.follow,
+  );
+  router.delete(
+    '/:id/follow',
+    requireAuth,
+    followLimiter,
+    validateParams(userIdParamsSchema),
+    controller.unfollow,
+  );
   // After the fixed paths above, so /suggestions and /me/following keep matching them.
   router.get('/:username', requireAuth, validateParams(usernameParamsSchema), controller.profile);
   const listParts = [requireAuth, validateParams(usernameParamsSchema), validateQuery(followListQuerySchema)];

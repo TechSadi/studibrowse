@@ -1,4 +1,4 @@
-import { io, type Socket } from 'socket.io-client';
+import { io, type ManagerOptions, type Socket, type SocketOptions } from 'socket.io-client';
 import type {
   Ack,
   AckData,
@@ -10,6 +10,7 @@ import type {
 } from '@studibrowse/shared';
 import { SOCKET_ERROR_CODES } from '@studibrowse/shared';
 import { ApiError, endSession, getAccessToken, NETWORK_ERROR_CODE, refreshSession } from './api';
+import { config } from './config';
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -99,11 +100,13 @@ function onBrowserOnline() {
 /** Opens the socket for the signed-in user. Safe to call more than once. */
 export function connectSocket(): AppSocket {
   if (socket) return socket;
-  const created: AppSocket = io({
+  const options: Partial<ManagerOptions & SocketOptions> = {
     autoConnect: false,
     // A function, so every reconnect sends the newest access token.
     auth: (cb) => cb({ token: getAccessToken() }),
-  });
+  };
+  // The JWT in the handshake is the only credential, so a cross-origin socket needs no cookie.
+  const created: AppSocket = config.socketUrl ? io(config.socketUrl, options) : io(options);
   socket = created;
   hadTrouble = false;
   refreshedSinceConnect = false;
