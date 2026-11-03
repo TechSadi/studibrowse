@@ -10,6 +10,12 @@ export const usernameSchema = z
   .max(USERNAME_MAX, `Usernames can be at most ${USERNAME_MAX} characters.`)
   .regex(/^[a-z0-9_]+$/, 'Use only letters, numbers and underscores.');
 
+export const nameSchema = z
+  .string()
+  .trim()
+  .min(1, 'Enter your name.')
+  .max(NAME_MAX, `Names can be at most ${NAME_MAX} characters.`);
+
 export const emailSchema = z.string().trim().toLowerCase().pipe(z.email('Enter a valid email.'));
 
 export const passwordSchema = z
@@ -19,11 +25,7 @@ export const passwordSchema = z
   .regex(/[^A-Za-z]/, `Use ${PASSWORD_MIN}+ characters with a number or symbol.`);
 
 export const signupSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'Enter your name.')
-    .max(NAME_MAX, `Names can be at most ${NAME_MAX} characters.`),
+  name: nameSchema,
   username: usernameSchema,
   email: emailSchema,
   password: passwordSchema,

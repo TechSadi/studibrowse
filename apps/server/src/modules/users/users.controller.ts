@@ -1,5 +1,7 @@
 import type { RequestHandler } from 'express';
 import type {
+  ChangeEmailData,
+  DeleteAccountData,
   FollowingResponse,
   FollowListQuery,
   FollowListResponse,
@@ -11,6 +13,8 @@ import type {
   UsernameAvailabilityResponse,
   UsernameParams,
 } from '@studibrowse/shared';
+import { clearRefreshCookie } from '../auth/auth.cookies';
+import { deleteAccount } from './accountDeletion.service';
 import * as profileService from './profile.service';
 import * as usersService from './users.service';
 
@@ -31,6 +35,25 @@ export const updateMe: RequestHandler<Record<string, string>, MeResponse, Update
 ) => {
   res.json({ user: await usersService.updateMe(req.userId!, req.body) });
 };
+
+export const changeEmail: RequestHandler<Record<string, string>, MeResponse, ChangeEmailData> = async (
+  req,
+  res,
+) => {
+  res.json({ user: await usersService.changeEmail(req.userId!, req.body) });
+};
+
+/** `onDeleted` drops the person's open sockets, so they leave their rooms. */
+export function createDeleteMeHandler(
+  onDeleted?: (userId: string) => void,
+): RequestHandler<Record<string, string>, unknown, DeleteAccountData> {
+  return async (req, res) => {
+    await deleteAccount(req.userId!, req.body);
+    clearRefreshCookie(res);
+    onDeleted?.(req.userId!);
+    res.status(204).end();
+  };
+}
 
 export const suggestions: RequestHandler<Record<string, string>, SuggestionsResponse> = async (req, res) => {
   res.json({ users: await usersService.listSuggestions(req.userId!) });

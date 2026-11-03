@@ -30,6 +30,8 @@ export interface AppDependencies {
   storage?: StorageService;
   /** Tells the lobby about a room that was just created. The server wires it to Socket.IO; tests may leave it out. */
   onRoomCreated?: (roomId: string) => void;
+  /** Drops a deleted account's sockets. The server wires it to Socket.IO; tests may leave it out. */
+  onAccountDeleted?: (userId: string) => void;
 }
 
 /** Builds the Express app without listening, so tests can import it. */
@@ -40,6 +42,7 @@ export function createApp({
   verifyGoogleToken = createGoogleVerifier(env.GOOGLE_CLIENT_ID),
   storage = createStorageService(env),
   onRoomCreated,
+  onAccountDeleted,
 }: AppDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -53,7 +56,7 @@ export function createApp({
   app.use('/api/health', createHealthRouter(isDatabaseConnected));
   // The password, email and Google endpoints are rate limited inside the router.
   app.use('/api/auth', createAuthRouter({ emailService, verifyGoogleToken }));
-  app.use('/api/users', createUsersRouter());
+  app.use('/api/users', createUsersRouter({ onAccountDeleted }));
   app.use('/api/rooms', createRoomsRouter({ storage, onRoomCreated }));
   app.use('/api/sessions', createSessionsRouter());
   app.use('/api/progress', createProgressRouter());

@@ -101,7 +101,7 @@ describe('chat:send', () => {
 
     const stored = await Message.findById(message.id).lean();
     expect(stored).toMatchObject({ text: 'Back after the break!' });
-    expect(stored?.userId.toString()).toBe(alice.user.id);
+    expect(stored?.userId?.toString()).toBe(alice.user.id);
   });
 
   it(`accepts exactly ${CHAT_TEXT_MAX} characters`, async () => {

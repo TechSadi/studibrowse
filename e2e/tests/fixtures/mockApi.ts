@@ -51,6 +51,9 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     privacy: { showStudying: true, showStats: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',
     createdAt: '2026-09-01T10:00:00.000Z',
+    hasPassword: true,
+    googleLinked: false,
+    passwordChangedAt: null,
     ...overrides,
   };
 }
@@ -218,6 +221,7 @@ export class MockApi {
           : error(401, 'INVALID_CREDENTIALS', 'That email or username and password don’t match.');
       }
       case 'POST /api/auth/logout':
+      case 'POST /api/auth/logout-all':
         this.sessionUserId = null;
         return { status: 204 };
       case 'POST /api/auth/google':
@@ -244,13 +248,29 @@ export class MockApi {
       }
       case 'PATCH /api/users/me': {
         this.record('updateMe', body);
-        const { timerDefaults, onboarded, ...fields } = body as Partial<PublicUser> & { onboarded?: true };
+        const { timerDefaults, notificationPrefs, privacy, onboarded, ...fields } =
+          body as Partial<PublicUser> & {
+            onboarded?: true;
+          };
         return this.updateCurrentUser((user) => ({
           ...user,
           ...fields,
           timerDefaults: { ...user.timerDefaults, ...timerDefaults },
+          notificationPrefs: { ...user.notificationPrefs, ...notificationPrefs },
+          privacy: { ...user.privacy, ...privacy },
           onboardedAt: user.onboardedAt ?? (onboarded ? new Date().toISOString() : null),
         }));
+      }
+      case 'DELETE /api/users/me': {
+        this.record('deleteMe', body);
+        const account = this.currentAccount();
+        if (!account) return error(401, 'UNAUTHENTICATED', 'Please log in to continue.');
+        if (String(body.username).trim().toLowerCase() !== account.user.username) {
+          return error(400, 'CONFIRMATION_MISMATCH', 'Type your username exactly to confirm.');
+        }
+        this.accounts = this.accounts.filter((a) => a !== account);
+        this.sessionUserId = null;
+        return { status: 204 };
       }
       case 'GET /api/users/suggestions': {
         const users: SuggestedUser[] = this.accounts

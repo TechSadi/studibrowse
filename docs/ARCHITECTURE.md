@@ -66,7 +66,7 @@ Built in Phase 1 (`modules/auth`, `modules/users`). Two tokens:
 - **Access token:** a JWT (HS256, `ACCESS_TOKEN_TTL_SECONDS`, 15 minutes by default) whose `sub` is the user id. The web app keeps it in memory only, never in localStorage. It is sent as a Bearer header on REST calls and in the socket handshake.
 - **Refresh token:** 32 random bytes in the `sb_refresh` cookie (`httpOnly`, `Secure`, `SameSite=Lax`, path `/api/auth`). The server stores only its SHA-256 hash in the `refreshtokens` collection (`userId`, `familyId`, `tokenHash`, `persistent`, `expiresAt` with a TTL index, `usedAt`), so it can be revoked. It lasts `REFRESH_TOKEN_TTL_DAYS` (30 by default) from the last refresh.
 
-Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails are stored lowercased, so their unique indexes are case-insensitive. Users leave the server only through `toPublicUser()` (`modules/users/user.serializer.ts`), which copies an explicit list of fields; `passwordHash` is also `select: false` on the model.
+Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). `passwordChangedAt` is set at sign-up and on every reset, and removed with the password when Google is linked. `toPublicUser()` sends `hasPassword` (`!googleId || passwordChangedAt`, worked out without reading the hash: only linking Google removes a password), `googleLinked` and `passwordChangedAt`, for Settings. Usernames and emails are stored lowercased, so their unique indexes are case-insensitive. Users leave the server only through `toPublicUser()` (`modules/users/user.serializer.ts`), which copies an explicit list of fields; `passwordHash` is also `select: false` on the model.
 
 | Endpoint | Does | Errors |
 | --- | --- | --- |
@@ -74,12 +74,15 @@ Passwords are hashed with bcrypt (cost `BCRYPT_COST`, 12). Usernames and emails 
 | `POST /api/auth/login` | `identifier` is an email if it contains `@`, otherwise a username (shared `loginSchema`) | 401 `INVALID_CREDENTIALS` (same for unknown accounts, wrong passwords and Google-only accounts) |
 | `POST /api/auth/refresh` | Rotates the cookie, returns `{ accessToken, user }` | 401 `UNAUTHENTICATED`, 401 `REFRESH_TOKEN_REUSED`; the cookie is cleared on any failure |
 | `POST /api/auth/logout` | Deletes the session's tokens and clears the cookie (204, also without a cookie) | none |
+| `POST /api/auth/logout-all` | Signed in. Deletes every refresh token of the account (every device, this one included) and clears the cookie (204). Access tokens already issued work until they expire (15 minutes at most), as after a reset | 401 |
 | `GET /api/auth/me` | `{ user }` for the access token | 401 `UNAUTHENTICATED`, 401 `TOKEN_EXPIRED` |
 | `POST /api/auth/forgot` | Emails a reset link if an account uses the email (shared `forgotPasswordSchema`). Always 200 `{ ok: true }` | 400 `VALIDATION_ERROR`, 429 `RATE_LIMITED` |
 | `POST /api/auth/reset` | Sets a new password from a reset link and signs the account out everywhere (204) (shared `resetPasswordSchema`) | 400 `RESET_TOKEN_INVALID` (unknown, used or expired) |
 | `POST /api/auth/google` | Verifies a Google ID token, then signs in, links or creates the account. Sets the cookie, returns `{ accessToken, user }`: 201 for a new account, 200 otherwise (shared `googleAuthSchema`) | 401 `GOOGLE_TOKEN_INVALID`, 409 `GOOGLE_ACCOUNT_CONFLICT`, 503 `GOOGLE_NOT_CONFIGURED` |
 | `GET /api/users/username-available?u=` | `{ available }`, for the live check on Sign up | 400 `VALIDATION_ERROR` |
-| `PATCH /api/users/me` | Updates your own profile and settings (shared `updateMeSchema`: `avatarColor`, `studying`, `subjects`, `weeklyGoalMins`, `timerDefaults` merged per field, `timeZone` (an IANA zone `Intl` knows, such as `Europe/London`, or `UTC`), `privacy` (`showStudying`, `showStats`) merged per field, and `onboarded: true`, which sets `onboardedAt` the first time only). Strict: unknown fields such as `email` are rejected. Returns `{ user }` | 400 `VALIDATION_ERROR`, 401 |
+| `PATCH /api/users/me` | Updates your own profile and settings (shared `updateMeSchema`: `name`, `username` (409 `USERNAME_TAKEN` if someone else has it, including a duplicate-key race, mapped by `modules/users/duplicateKey.ts`), `avatarColor`, `studying`, `subjects`, `weeklyGoalMins`, `timerDefaults` merged per field, `timeZone` (an IANA zone `Intl` knows, such as `Europe/London`, or `UTC`), `privacy` (`showStudying`, `showStats`) and `notificationPrefs` (`roomOpened`, `roomFull`, `memberJoined`, `roundEnded`) merged per field, and `onboarded: true`, which sets `onboardedAt` the first time only). Strict: unknown fields such as `email` and `password` are rejected. Returns `{ user }` | 400 `VALIDATION_ERROR`, 401, 409 `USERNAME_TAKEN` |
+| `PATCH /api/users/me/email` | Changes the sign-in email (shared `changeEmailSchema`: `email`, `password`). The current password is checked with bcrypt; wrong guesses are limited to 10 per account per 15 minutes (`PASSWORD_CHECK_RATE_LIMIT`, failures only). A Google-linked account's email belongs to Google (linking by email depends on it), so it can't be changed. Returns `{ user }` | 400 `WRONG_PASSWORD` (also for accounts without a password), 400 `EMAIL_MANAGED_BY_GOOGLE`, 409 `EMAIL_TAKEN`, 429 `RATE_LIMITED`, 401 |
+| `DELETE /api/users/me` | Deletes your account (shared `deleteAccountSchema`: `username`, which must be yours; trimmed and any case). See Account deletion below. Clears the cookie, 204 | 400 `CONFIRMATION_MISMATCH`, 401 |
 | `GET /api/users/me/following` | `{ users }`: the people you follow, in the order you followed them, for the sidebar. Each is a `FollowedUser` (`toFollowedUser()`: id, name, username, avatarColor). Deleted accounts are left out | 401 |
 | `GET /api/users/suggestions` | `{ users }`: up to 5 people for onboarding's Follow step, the most recently active first (`lastStudiedAt`, then `updatedAt`). Only people who finished onboarding, never you. Each is a `SuggestedUser` (`toSuggestedUser()`: no email or settings) | 401 |
 | `POST /api/users/:id/follow` | Adds the person to your `following` (idempotent), returns `{ user }` | 400 `VALIDATION_ERROR` (bad id), 400 `CANNOT_FOLLOW_SELF`, 404 `USER_NOT_FOUND`, 401 |
@@ -141,6 +144,31 @@ Because each refresh token works exactly once, two tabs refreshing with the same
   - `/reset-password` and `/r/:inviteCode` work in either state. Any other path shows the 404 page.
 - **Reset links:** the page reads the token from the URL fragment (`#token=…`) and then removes it from the address bar.
 - **Google sign-in:** the web app renders Google's own button with Google Identity Services, with the same `GOOGLE_CLIENT_ID` from the repo-root `.env`: `vite.config.ts` passes it to the browser as `VITE_GOOGLE_CLIENT_ID` (a client id is public), unless `VITE_GOOGLE_CLIENT_ID` is set to override it. Only `src/lib/config.ts` reads it. Without a client id the button shows as unavailable.
+
+### Account deletion (`modules/users/accountDeletion.service.ts`)
+
+`DELETE /api/users/me` checks the typed username, then, in this order:
+
+1. deletes the refresh tokens and reset tokens (every device is signed out)
+2. takes the account out of everyone's `following` (`$pull`)
+3. deletes the notifications it received
+4. anonymises its chat messages: `userId` becomes null, the text stays, and rooms show "Deleted account"
+5. deletes the user
+
+The user goes last, so a failure part-way can be retried. Kept: study sessions (the spec keeps the session log in everyone's history), resources it shared (deleted with their rooms), and rooms it hosts, which drop out of every list once the host is gone. Then `createApp`'s `onAccountDeleted` (wired in `index.ts`) disconnects every socket in `user:<id>`. The usual reconnect window then takes the person out of their rooms and hands the host role on, and they can't rejoin because `loadMemberProfile` refuses a missing user. As with a reset, an access token already issued works until it expires (15 minutes at most), but every endpoint that reads the user then answers 401.
+
+## Settings (web, `features/settings/`)
+
+`/settings` (mockup `#settings`). Everything comes from the signed-in user in `AuthContext`, so the page has no loading state of its own.
+
+- **Layout:** `SettingsPage.tsx` has the side nav (a click scrolls to the section, smoothly unless reduced motion is on, and moves focus to it; a horizontal scroller below 980px) and six sections built from `SettingsLayout.tsx` (`SettingsSection`, `SettingRow`, `SwitchRow`).
+- **Saving:** `useSaveMe()` checks the change with the shared `updateMeSchema`, sends `PATCH /api/users/me`, swaps in the returned user with `setUser`, and shows the saved toast (an error toast on failure). Switches flip at once and flip back if the save fails. The timer steppers save 600 ms after the last click (`TIMER_SAVE_DELAY_MS`), or straight away if you leave the page first, so a burst of clicks is one request and one toast.
+- **Account:** "Change colour" opens the onboarding `ColorSwatches`, and a pick saves at once. Name, username (live check through `useUsernameAvailability` when it's not your own), email and Bio (`studying`) save with Save changes. A new email opens `ConfirmPasswordDialog`, which sends `PATCH /api/users/me/email`. A Google-linked account's email is read-only. "Change password" emails a reset link through `POST /api/auth/forgot`. There's no photo upload (no profile photos in v1).
+- **Appearance:** the System / Light / Dark radiogroup calls `useTheme().choose`, which saves `sb-theme` and sets `data-theme`.
+- **Notifications** (the four `notificationPrefs`) and **Privacy** (`showStudying`, `showStats`): switches.
+- **Timer defaults:** Focus, Short break and Rounds, plus the weekly goal in whole hours (1 to 40).
+- **Log out and delete:** Log out (`LogoutButton`); Log out of all devices (`ConfirmDialog`, then `AuthContext.logoutAll()`); Delete account (`DeleteAccountDialog`: the button stays disabled until the typed text matches the username the way the server compares it, then `endAfterDeletion()` signs out locally and the guards show Welcome).
+- Tests: `SettingsPage.test.tsx`, `e2e/tests/settings.spec.ts`.
 
 ## Rooms (`modules/rooms/`)
 
@@ -243,7 +271,7 @@ Indexes: `{ participants.userId, startedAt: -1 }` for weeks and the summary, `{ 
 ## Profiles and following (`modules/users/`, web `features/profile/`, `features/follows/`)
 
 - **Following** is the `following` array on each user; followers are found with `User.find({ following: id })` (indexed). There is no separate follows collection.
-- **Privacy** (`user.privacy`, Settings › Privacy, not built yet): `showStudying` hides your "what are you studying" line from profiles, suggestions and people lists; `showStats` hides the profile's three stats. Both default to true. Your own profile always shows you everything.
+- **Privacy** (`user.privacy`, Settings › Privacy): `showStudying` hides your "what are you studying" line from profiles, suggestions and people lists; `showStats` hides the profile's three stats. Both default to true. Your own profile always shows you everything.
 - **`GET /api/users/:username`** (`profile.service.ts`) builds a `UserProfile`:
   - follower and following counts (deleted accounts don't count), `isFollowing`, `isMe`, `joinedAt` (`createdAt`).
   - `stats` (null when hidden): focus minutes this calendar month in their time zone (a Session aggregate), the current streak (`displayedStreak()` in `sessions/streak.ts`, 0 once lapsed, shared with Progress) and rooms hosted (`Room.countDocuments({ hostId })`).

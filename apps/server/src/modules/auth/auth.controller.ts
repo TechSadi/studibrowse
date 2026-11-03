@@ -51,6 +51,14 @@ export const logout: RequestHandler = async (req, res) => {
   res.status(204).end();
 };
 
+/** Signs out every device, this one included. */
+export const logoutAll: RequestHandler = async (req, res) => {
+  // requireAuth runs first, so userId is set.
+  await authService.logoutAll(req.userId!);
+  clearRefreshCookie(res);
+  res.status(204).end();
+};
+
 export const me: RequestHandler<Params, MeResponse> = async (req, res) => {
   // requireAuth runs first, so userId is set.
   res.json({ user: await authService.getMe(req.userId!) });

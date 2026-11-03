@@ -60,6 +60,8 @@ const userSchema = new Schema(
     email: { type: String, required: true, lowercase: true, trim: true },
     // Absent for Google-only accounts. Never selected unless a query asks for it.
     passwordHash: { type: String, select: false },
+    /** When a password was last set (sign up or reset). Null on older accounts and Google-only ones. */
+    passwordChangedAt: { type: Date, default: null },
     googleId: { type: String },
     avatarColor: { type: String, enum: AVATAR_COLORS, required: true, default: randomAvatarColor },
     studying: { type: String, trim: true, maxlength: STUDYING_MAX, default: '' },

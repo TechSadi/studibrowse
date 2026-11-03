@@ -26,7 +26,7 @@ const hana: PresenceMember = {
   focusingSince: null,
 };
 
-function message(id: string, userId: string, text: string): ChatMessage {
+function message(id: string, userId: string | null, text: string): ChatMessage {
   return { id, roomId: ROOM, userId, text, createdAt: '2026-01-05T19:05:00.000Z' };
 }
 
@@ -60,6 +60,11 @@ describe('ChatPanel', () => {
   it('names someone who has left as Someone', () => {
     renderPanel([message('1', 'gone', 'bye')]);
     expect(screen.getByRole('listitem').textContent).toContain('Someone');
+  });
+
+  it('names the author of a deleted account as Deleted account', () => {
+    renderPanel([message('1', null, 'See you after the break')]);
+    expect(screen.getByRole('listitem').textContent).toContain('Deleted account');
   });
 
   it('has an empty state', () => {

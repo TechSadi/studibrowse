@@ -34,6 +34,8 @@ const app = createApp({
       .roomOpened(roomId)
       .catch((err: unknown) => logger.error({ err, roomId }, '[notifications] failed to tell followers'));
   },
+  // Their tabs drop, and the usual reconnect window then takes them out of their rooms.
+  onAccountDeleted: (userId) => io.in(userRoom(userId)).disconnectSockets(true),
 });
 const httpServer = createServer(app);
 const notifications = createNotificationSender({

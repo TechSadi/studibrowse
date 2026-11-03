@@ -1,8 +1,10 @@
 import type {
   ApiErrorBody,
   AuthResponse,
+  ChangeEmailInput,
   CreateRoomInput,
   CreateRoomResponse,
+  DeleteAccountInput,
   FollowingResponse,
   FollowListResponse,
   ForgotPasswordInput,
@@ -172,6 +174,8 @@ export const authApi = {
     request<ForgotPasswordResponse>('POST', '/api/auth/forgot', { body: input }),
   reset: (input: ResetPasswordInput) => request<void>('POST', '/api/auth/reset', { body: input }),
   logout: () => request<void>('POST', '/api/auth/logout'),
+  /** Signs out every device, this one included. */
+  logoutAll: () => request<void>('POST', '/api/auth/logout-all', { auth: true }),
   me: () => request<MeResponse>('GET', '/api/auth/me', { auth: true }),
 };
 
@@ -184,6 +188,10 @@ export const usersApi = {
     ),
   updateMe: (input: UpdateMeInput) =>
     request<MeResponse>('PATCH', '/api/users/me', { body: input, auth: true }),
+  changeEmail: (input: ChangeEmailInput) =>
+    request<MeResponse>('PATCH', '/api/users/me/email', { body: input, auth: true }),
+  deleteMe: (input: DeleteAccountInput) =>
+    request<void>('DELETE', '/api/users/me', { body: input, auth: true }),
   myFollowing: () => request<FollowingResponse>('GET', '/api/users/me/following', { auth: true }),
   profile: (username: string) =>
     request<ProfileResponse>('GET', `/api/users/${encodeURIComponent(username)}`, { auth: true }),

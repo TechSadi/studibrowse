@@ -41,6 +41,12 @@ export interface PublicUser {
   /** ISO timestamp, or null until onboarding is finished. */
   onboardedAt: string | null;
   createdAt: string;
+  /** False for accounts that only sign in with Google. */
+  hasPassword: boolean;
+  /** Linked to Google: the email is Google's and can't be changed here. */
+  googleLinked: boolean;
+  /** ISO timestamp of the last password set, or null if unknown (older accounts) or none. */
+  passwordChangedAt: string | null;
 }
 
 export interface TimerDefaults {

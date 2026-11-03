@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { followListQuerySchema, updateMeSchema, userIdParamsSchema, usernameParamsSchema } from './users';
+import {
+  changeEmailSchema,
+  deleteAccountSchema,
+  followListQuerySchema,
+  updateMeSchema,
+  userIdParamsSchema,
+  usernameParamsSchema,
+} from './users';
 
 describe('updateMeSchema', () => {
   it('accepts every onboarding field', () => {
@@ -35,6 +42,19 @@ describe('updateMeSchema', () => {
     });
   });
 
+  it('trims the name and lowercases the username', () => {
+    expect(updateMeSchema.parse({ name: '  Alex Smith ', username: 'AlexS' })).toEqual({
+      name: 'Alex Smith',
+      username: 'alexs',
+    });
+  });
+
+  it('accepts part of the notification settings', () => {
+    expect(updateMeSchema.parse({ notificationPrefs: { memberJoined: false } })).toEqual({
+      notificationPrefs: { memberJoined: false },
+    });
+  });
+
   it('trims and de-duplicates subjects', () => {
     expect(updateMeSchema.parse({ subjects: [' Maths', 'Maths ', 'Law'] }).subjects).toEqual([
       'Maths',
@@ -59,7 +79,13 @@ describe('updateMeSchema', () => {
     ['onboarded: false', { onboarded: false }],
     ['an unknown privacy setting', { privacy: { showEmail: true } }],
     ['a non-boolean privacy setting', { privacy: { showStats: 'no' } }],
+    ['an empty name', { name: '   ' }],
+    ['a long name', { name: 'x'.repeat(51) }],
+    ['a username with spaces', { username: 'alex smith' }],
+    ['an unknown notification setting', { notificationPrefs: { newFollowers: true } }],
+    ['a non-boolean notification setting', { notificationPrefs: { roomFull: 1 } }],
     ['fields with their own flow', { email: 'new@example.com' }],
+    ['a password', { password: 'secret123!' }],
     ['a raw onboardedAt', { onboardedAt: '2026-01-01T00:00:00Z' }],
   ])('rejects %s', (_, body) => {
     expect(updateMeSchema.safeParse(body).success).toBe(false);
@@ -97,5 +123,32 @@ describe('followListQuerySchema', () => {
 
   it.each(['0', '21', '2.5'])('rejects a limit of %s', (limit) => {
     expect(followListQuerySchema.safeParse({ limit }).success).toBe(false);
+  });
+});
+
+describe('changeEmailSchema', () => {
+  it('normalises the email', () => {
+    expect(changeEmailSchema.parse({ email: ' New@Example.com ', password: 'pw' })).toEqual({
+      email: 'new@example.com',
+      password: 'pw',
+    });
+  });
+
+  it.each([
+    ['a bad email', { email: 'nope', password: 'pw' }],
+    ['no password', { email: 'a@b.co', password: '' }],
+    ['an extra field', { email: 'a@b.co', password: 'pw', name: 'x' }],
+  ])('rejects %s', (_, body) => {
+    expect(changeEmailSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('deleteAccountSchema', () => {
+  it('normalises the typed username', () => {
+    expect(deleteAccountSchema.parse({ username: ' AlexSmith ' })).toEqual({ username: 'alexsmith' });
+  });
+
+  it.each([{}, { username: '' }, { username: 'alex', extra: true }])('rejects %j', (body) => {
+    expect(deleteAccountSchema.safeParse(body).success).toBe(false);
   });
 });

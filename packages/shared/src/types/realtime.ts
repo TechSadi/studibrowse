@@ -19,7 +19,8 @@ export interface PresenceMember {
 export interface ChatMessage {
   id: string;
   roomId: string;
-  userId: string;
+  /** Null once the author deleted their account. */
+  userId: string | null;
   text: string;
   /** ISO timestamp. */
   createdAt: string;

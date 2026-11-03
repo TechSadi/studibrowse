@@ -16,6 +16,10 @@ interface AuthContextValue {
   /** Replaces the signed-in user with a fresh copy from the API (after a profile update or a follow). */
   setUser: (user: PublicUser) => void;
   logout: () => Promise<void>;
+  /** Signs out every device, this one included. Throws if the server refused, so nothing changed. */
+  logoutAll: () => Promise<void>;
+  /** Signs out locally after the account was deleted (the server already ended every session). */
+  endAfterDeletion: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -81,15 +85,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [savedTimeZone, setUser]);
 
-  const logout = useCallback(async () => {
-    // Logging out locally must work even if the request fails (offline); the server answers 204 regardless.
-    await authApi.logout().catch(() => undefined);
+  const signOutHere = useCallback(() => {
     setAccessToken(null);
     queryClient.clear();
     setState({ ...SIGNED_OUT, loggedOut: true });
   }, [queryClient]);
 
-  const value = useMemo(() => ({ state, signIn, setUser, logout }), [state, signIn, setUser, logout]);
+  const logout = useCallback(async () => {
+    // Logging out locally must work even if the request fails (offline); the server answers 204 regardless.
+    await authApi.logout().catch(() => undefined);
+    signOutHere();
+  }, [signOutHere]);
+
+  // Unlike logout, a failure must be shown: the other devices would still be signed in.
+  const logoutAll = useCallback(async () => {
+    await authApi.logoutAll();
+    signOutHere();
+  }, [signOutHere]);
+
+  const value = useMemo(
+    () => ({ state, signIn, setUser, logout, logoutAll, endAfterDeletion: signOutHere }),
+    [state, signIn, setUser, logout, logoutAll, signOutHere],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

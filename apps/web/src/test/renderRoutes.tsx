@@ -32,6 +32,9 @@ export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
     privacy: { showStudying: true, showStats: true },
     onboardedAt: '2026-10-01T10:00:00.000Z',
     createdAt: '2026-09-01T10:00:00.000Z',
+    hasPassword: true,
+    googleLinked: false,
+    passwordChangedAt: null,
     ...overrides,
   };
 }

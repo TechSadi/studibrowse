@@ -12,9 +12,9 @@ import { OnboardingPage } from '../features/onboarding/OnboardingPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { ProgressPage } from '../features/progress/ProgressPage';
 import { RoomPage } from '../features/room/RoomPage';
+import { SettingsPage } from '../features/settings/SettingsPage';
 import { WelcomePage } from '../features/welcome/WelcomePage';
 import { NotFoundPage } from './NotFoundPage';
-import { SettingsPage } from './placeholderPages';
 
 const shell = (crumb: string): ShellRouteHandle => ({ crumb });
 

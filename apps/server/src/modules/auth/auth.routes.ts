@@ -55,6 +55,7 @@ export function createAuthRouter({ emailService, verifyGoogleToken }: AuthRouter
   router.post('/reset', ipLimiter, validateBody(resetPasswordSchema), controller.resetPassword);
   router.post('/refresh', controller.refresh);
   router.post('/logout', controller.logout);
+  router.post('/logout-all', requireAuth, controller.logoutAll);
   router.get('/me', requireAuth, controller.me);
   return router;
 }

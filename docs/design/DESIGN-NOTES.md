@@ -21,7 +21,7 @@ How to read `studibrowse-mockup.html`. Open it in a browser; the "All screens" p
 | `#progress` | `/progress` | This week vs goal, streak, sessions, focus by day chart, history table. Weeks run Sunday to Saturday like Home's chart, so the app reads "Sun 1 Nov to Sat 7 Nov" and "by Saturday" where the mockup's text says Mon to Sun. The "Weekly goal" button links to Settings |
 | `#notifications` | `/notifications` | All / Unread / Rooms opened, grouped Today and Earlier, Join on room alerts |
 | `#profile` | `/u/:username` | Cover, avatar, Follow/Share, Hosting now + Join, stats, recent rooms, about, followers |
-| `#settings` | `/settings` | Account, Appearance (System/Light/Dark), notifications, timer defaults + weekly goal, privacy, log out / delete |
+| `#settings` | `/settings` | Account, Appearance (System/Light/Dark), notifications, timer defaults + weekly goal, privacy, log out / delete. Deliberate differences from the mockup: no Upload photo (no profile photos in v1); no "New followers" toggle (no such notification in the spec); no "Let anyone follow me" (no follow approval in the spec); "Round ends" reads "A notification when a focus round ends" (the sound has its own mute in the room); the first privacy toggle is "Show what I'm studying / The line under your name on your profile", which is what it controls; an added "Log out of all devices" row; and Delete account asks you to type your username instead of confirming by email. Changing the email asks for your password in a dialog |
 
 ## Layout rules
 

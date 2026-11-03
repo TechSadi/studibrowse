@@ -89,8 +89,11 @@ export function ChatPanel({ roomId, initialMessages, myUserId, members, focusRou
           <ol className={styles.msgs}>
             {messages.map((message) => {
               const mine = message.userId === myUserId;
-              const author = membersById.get(message.userId);
-              const name = mine ? 'You' : (author?.name ?? 'Someone');
+              const author = message.userId === null ? undefined : membersById.get(message.userId);
+              // A null author deleted their account; anyone else not in the room has left.
+              const name = mine
+                ? 'You'
+                : (author?.name ?? (message.userId === null ? 'Deleted account' : 'Someone'));
               return (
                 <li key={message.id} className={mine ? `${styles.msg} ${styles.mine}` : styles.msg}>
                   {mine ? null : (

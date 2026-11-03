@@ -33,11 +33,14 @@ describe('toPublicUser', () => {
         'createdAt',
         'email',
         'following',
+        'googleLinked',
+        'hasPassword',
         'id',
         'lastStudiedAt',
         'name',
         'notificationPrefs',
         'onboardedAt',
+        'passwordChangedAt',
         'privacy',
         'streak',
         'studying',
@@ -56,7 +59,24 @@ describe('toPublicUser', () => {
       onboardedAt: null,
       privacy: { showStudying: true, showStats: true },
       createdAt: '2026-09-01T10:00:00.000Z',
+      googleLinked: true,
+      passwordChangedAt: null,
     });
+  });
+
+  it.each([
+    ['a password account', {}, true],
+    ['a Google-only account', { googleId: 'g-1' }, false],
+    ['a Google account that set a password', { googleId: 'g-1', passwordChangedAt: new Date() }, true],
+  ])('works out hasPassword for %s', (_, fields, expected) => {
+    const account = new User({
+      name: 'A',
+      username: 'aaa',
+      email: 'a@example.com',
+      createdAt: new Date(),
+      ...fields,
+    });
+    expect(toPublicUser(account).hasPassword).toBe(expected);
   });
 });
 

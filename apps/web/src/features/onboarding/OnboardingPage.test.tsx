@@ -29,6 +29,9 @@ const baseUser: PublicUser = {
   privacy: { showStudying: true, showStats: true },
   onboardedAt: null,
   createdAt: '2026-10-01T10:00:00.000Z',
+  hasPassword: true,
+  googleLinked: false,
+  passwordChangedAt: null,
 };
 
 const maya: SuggestedUser = {

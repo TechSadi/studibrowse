@@ -4,7 +4,8 @@ import { CHAT_TEXT_MAX } from '@studibrowse/shared';
 const messageSchema = new Schema(
   {
     roomId: { type: Schema.Types.ObjectId, ref: 'Room', required: true },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // Null once the author deleted their account: the message stays, anonymised.
+    userId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     text: { type: String, required: true, trim: true, maxlength: CHAT_TEXT_MAX },
   },
   { timestamps: { createdAt: true, updatedAt: false } },

@@ -41,7 +41,18 @@ export function toPublicUser(user: UserDocument): PublicUser {
     privacy: { showStudying: user.privacy.showStudying, showStats: user.privacy.showStats },
     onboardedAt: user.onboardedAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
+    hasPassword: hasPassword(user),
+    googleLinked: Boolean(user.googleId),
+    passwordChangedAt: user.passwordChangedAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * Worked out without reading the hash: only linking Google removes a password, so an account without
+ * Google always has one, and a Google account has one only once a reset set it (passwordChangedAt).
+ */
+function hasPassword(user: Pick<UserDocument, 'googleId' | 'passwordChangedAt'>): boolean {
+  return !user.googleId || Boolean(user.passwordChangedAt);
 }
 
 /** Their "what are you studying" line as other people see it: empty when their privacy settings hide it. */

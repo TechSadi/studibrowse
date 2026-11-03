@@ -3,6 +3,7 @@ import {
   AVATAR_COLORS,
   FOLLOW_LIST_PAGE_SIZE,
   MAX_SUBJECTS,
+  PASSWORD_MAX,
   STUDYING_MAX,
   SUBJECT_MAX,
   TIME_ZONE_MAX,
@@ -10,7 +11,7 @@ import {
   WEEKLY_GOAL_MAX_MINS,
   WEEKLY_GOAL_MIN_MINS,
 } from '../constants';
-import { usernameSchema } from './auth';
+import { emailSchema, nameSchema, usernameSchema } from './auth';
 
 type TimerField = keyof typeof TIMER_LIMITS;
 
@@ -66,12 +67,22 @@ export const privacySchema = z.strictObject({
   showStats: z.boolean(),
 });
 
+/** Which notifications you get. Settings › Notifications. */
+export const notificationPrefsSchema = z.strictObject({
+  roomOpened: z.boolean(),
+  roomFull: z.boolean(),
+  memberJoined: z.boolean(),
+  roundEnded: z.boolean(),
+});
+
 /**
  * PATCH /api/users/me. Every field is optional, but the body can't be empty. Strict, so fields that need
- * their own flow (email, username, password) can't be changed through it.
+ * their own flow (email, password) can't be changed through it.
  */
 export const updateMeSchema = z
   .strictObject({
+    name: nameSchema,
+    username: usernameSchema,
     avatarColor: z.enum(AVATAR_COLORS, 'Pick one of the avatar colours.'),
     studying: z.string().trim().max(STUDYING_MAX, `Keep it to ${STUDYING_MAX} characters.`),
     subjects: subjectsSchema,
@@ -83,11 +94,21 @@ export const updateMeSchema = z
     timerDefaults: timerDefaultsSchema.partial(),
     timeZone: timeZoneSchema,
     privacy: privacySchema.partial(),
+    notificationPrefs: notificationPrefsSchema.partial(),
     /** Finishes (or skips) onboarding. The server sets onboardedAt the first time only. */
     onboarded: z.literal(true),
   })
   .partial()
   .refine((body) => Object.keys(body).length > 0, 'Nothing to update.');
+
+/** PATCH /api/users/me/email. The current password proves it's you, not someone at an unlocked laptop. */
+export const changeEmailSchema = z.strictObject({
+  email: emailSchema,
+  password: z.string().min(1, 'Enter your password.').max(PASSWORD_MAX),
+});
+
+/** DELETE /api/users/me. You type your username to confirm. */
+export const deleteAccountSchema = z.strictObject({ username: usernameSchema });
 
 export const userIdParamsSchema = z.object({
   id: z.string().regex(/^[a-f0-9]{24}$/i, 'That user id is not valid.'),
@@ -115,3 +136,8 @@ export type UserIdParams = z.output<typeof userIdParamsSchema>;
 export type UsernameParams = z.output<typeof usernameParamsSchema>;
 export type FollowListQuery = z.output<typeof followListQuerySchema>;
 export type PrivacySettings = z.output<typeof privacySchema>;
+export type NotificationPrefsSettings = z.output<typeof notificationPrefsSchema>;
+export type ChangeEmailInput = z.input<typeof changeEmailSchema>;
+export type ChangeEmailData = z.output<typeof changeEmailSchema>;
+export type DeleteAccountInput = z.input<typeof deleteAccountSchema>;
+export type DeleteAccountData = z.output<typeof deleteAccountSchema>;
