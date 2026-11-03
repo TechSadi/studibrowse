@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RoomTimer, TimerStatePayload } from '@studibrowse/shared';
-import { useRoomTimer, type TimerSnapshot } from './useRoomTimer';
+import { useRoomClock, useTimeLeft, type TimerSnapshot } from './useRoomTimer';
 
 // The latest timer:state listener the hook registered, so tests can play the server.
 let onTimerState: ((payload: TimerStatePayload) => void) | null = null;
@@ -28,11 +28,17 @@ const paused = (left: number): RoomTimer => ({
   pausedRemaining: left,
 });
 
+/** The two hooks as the focus room uses them: the server's timer, and the countdown drawn from it. */
+function useRoomTimer(roomId: string, initial: TimerSnapshot) {
+  const clock = useRoomClock(roomId, initial);
+  return { timer: clock.timer, remainingMs: useTimeLeft(clock) };
+}
+
 function renderTimer(initial: TimerSnapshot) {
   return renderHook(({ snapshot }) => useRoomTimer(ROOM, snapshot), { initialProps: { snapshot: initial } });
 }
 
-/** Moves the clock on, running the animation frames due in that time. */
+/** Moves the clock on, running the timers due in that time. */
 function elapse(ms: number) {
   act(() => {
     vi.advanceTimersByTime(ms);
@@ -112,5 +118,26 @@ describe('useRoomTimer', () => {
     elapse(3000);
     // About one render per second, not one per animation frame (~180 in 3 s).
     expect(renders - afterMount).toBeLessThanOrEqual(4);
+  });
+
+  it('keeps counting without animation frames, as in a background tab', () => {
+    const noFrames = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
+    const { result } = renderTimer({ timer: running(T0 + 25 * MIN), serverNow: T0 });
+    elapse(5010);
+    // The clock shows whole seconds: 24:55 after five of them.
+    expect(Math.ceil(result.current.remainingMs! / 1000)).toBe(25 * 60 - 5);
+    expect(noFrames).not.toHaveBeenCalled();
+  });
+
+  it('does not re-render the room clock as time passes', () => {
+    let renders = 0;
+    const initial = { timer: running(T0 + 25 * MIN), serverNow: T0 };
+    renderHook(() => {
+      renders++;
+      return useRoomClock(ROOM, initial);
+    });
+    const afterMount = renders;
+    elapse(5000);
+    expect(renders).toBe(afterMount);
   });
 });

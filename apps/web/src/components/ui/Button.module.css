@@ -50,7 +50,7 @@
 }
 
 .light:hover:not(:disabled) {
-  background: var(--ink-2);
+  background: var(--btn-light-hover);
   transform: translateY(-1px);
 }
 

@@ -1,7 +1,7 @@
 import type { RoomSummary } from '@studibrowse/shared';
 import { Button, ButtonLink } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
-import { LiveDot } from '../../components/ui/Pill';
+import { LiveTag } from '../../components/ui/Pill';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import { phaseView, type PhaseTone } from '../rooms/timerText';
 import styles from './RoomCard.module.css';
@@ -59,12 +59,7 @@ export function RoomCard({ room, now, onSubject, entering = false }: RoomCardPro
             {initialsOf(room.subject || room.name)}
           </span>
           <div className={styles.badges}>
-            {room.isLive ? (
-              <span className={styles.liveTag}>
-                <LiveDot className={styles.liveDot} />
-                Live
-              </span>
-            ) : null}
+            {room.isLive ? <LiveTag /> : null}
             <span
               className={full ? `${styles.cap} ${styles.full}` : styles.cap}
               aria-label={`${room.memberCount} of ${room.maxSize} people`}

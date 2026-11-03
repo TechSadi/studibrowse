@@ -42,4 +42,6 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Server coverage (modules/ and realtime/)
+        run: pnpm --filter @studibrowse/server test:coverage
       - run: pnpm build

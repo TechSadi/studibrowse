@@ -23,7 +23,7 @@
   display: grid;
   place-items: center;
   background: var(--amber-soft);
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 
 .flame :global(svg.i) {

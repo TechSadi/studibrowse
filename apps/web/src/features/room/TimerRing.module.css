@@ -21,20 +21,17 @@
 
 .pill.break {
   background: var(--violet-soft);
-  color: var(--violet);
+  color: var(--violet-ink);
 }
 
 .pill.done {
   background: var(--good-soft);
-  color: var(--good);
+  color: var(--good-ink);
 }
 
-.pillDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* The mockup's pulsing .live-dot, filled with the phase colour. */
+.pill .pillDot {
   background: currentColor;
-  flex: none;
 }
 
 .ring {

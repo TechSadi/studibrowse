@@ -89,26 +89,6 @@
   flex: none;
 }
 
-.liveTag {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--good);
-  background: var(--good-soft);
-  border: 1px solid var(--good-line);
-  padding: 4px 10px 4px 9px;
-  border-radius: 99px;
-}
-
-.liveDot {
-  width: 7px;
-  height: 7px;
-}
-
 .cap {
   font-family: var(--mono);
   font-size: 13px;

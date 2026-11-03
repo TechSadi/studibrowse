@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { keepTabInside } from '../../lib/focusTrap';
 import styles from './Modal.module.css';
-
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export interface ModalShellProps {
   /** Escape and a click on the backdrop. */
@@ -60,21 +58,7 @@ export function ModalShell({
       onClose();
       return;
     }
-    if (event.key !== 'Tab' || !dialogRef.current) return;
-    const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (
-      event.shiftKey &&
-      (document.activeElement === first || document.activeElement === dialogRef.current)
-    ) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    if (dialogRef.current) keepTabInside(event, dialogRef.current);
   }
 
   const dialogProps = {

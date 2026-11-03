@@ -1,8 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import type { FollowedUser, FollowLiveRoom } from '@studibrowse/shared';
+import { useFollowingPeople } from '../../features/follows/useFollowingPeople';
 import { useFollowLive } from '../../features/follows/useFollowLive';
-import { usersApi } from '../../lib/api';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import { Avatar } from '../ui/Avatar';
 import styles from './FollowingList.module.css';
@@ -36,12 +35,7 @@ function FollowRow({ person, live }: FollowRowProps) {
 
 /** "People you follow" in the sidebar: name plus a live dot, nothing else. */
 export function FollowingList({ following }: { following: string[] }) {
-  // The ids are in the key, so following or unfollowing someone refetches the names.
-  const query = useQuery({
-    queryKey: ['following', following],
-    queryFn: () => usersApi.myFollowing(),
-    enabled: following.length > 0,
-  });
+  const query = useFollowingPeople(following);
   const live = useFollowLive(following);
 
   if (following.length === 0) {

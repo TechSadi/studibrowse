@@ -26,9 +26,27 @@
   --good-soft: rgba(85, 201, 147, 0.12);
   --away: #5f716a;
   --danger: #f07a7a;
+  /*
+   * Text in the status colours. Not in the mockup: in light mode its violet, green and amber text falls below
+   * WCAG AA (4.5:1) on their own tints, so these are the same hues a little darker. Dark already passes.
+   */
+  --violet-ink: var(--violet);
+  --good-ink: var(--good);
+  --amber-ink: var(--amber);
   /* Badge outlines and the "Room is full" count. The mockup keeps these the same in both themes. */
   --good-line: rgba(85, 201, 147, 0.22);
   --danger-soft: rgba(240, 122, 122, 0.12);
+  /* The "Log out and delete" section's outlines and hover (mockup .danger-sec, .btn-danger). */
+  --danger-line: rgba(240, 122, 122, 0.3);
+  --danger-line-strong: rgba(240, 122, 122, 0.4);
+  --danger-hover: rgba(240, 122, 122, 0.1);
+  /* The outline of Home's "Your people are studying" pill (mockup .pill.hot), the same in both themes. */
+  --accent-line: rgba(76, 191, 152, 0.25);
+  /* Profile "Hosting now" card (mockup .hosting): an accent outline and wash, the same in both themes. */
+  --hosting-line: rgba(76, 191, 152, 0.3);
+  --hosting-wash: rgba(76, 191, 152, 0.08);
+  /* .btn-light hover: white in dark; the light theme's override uses --ink-2. */
+  --btn-light-hover: #fff;
   --av1: #173a30;
   --av1i: #8fdcbf;
   --av2: #3a2c16;
@@ -95,6 +113,10 @@
   --good-soft: #e1f3ea;
   --away: #97a39e;
   --danger: #c2413b;
+  --btn-light-hover: var(--ink-2);
+  --violet-ink: #2b65bd;
+  --good-ink: #19794e;
+  --amber-ink: #925e18;
   --av1: #dbeee6;
   --av1i: #1d6b57;
   --av2: #f6e7cf;

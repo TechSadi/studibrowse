@@ -99,8 +99,8 @@
   gap: 16px;
   padding: 20px;
   border-radius: 18px;
-  border: 1px solid var(--good-line);
-  background: linear-gradient(180deg, var(--good-soft), transparent), var(--surface);
+  border: 1px solid var(--hosting-line);
+  background: linear-gradient(180deg, var(--hosting-wash), transparent), var(--surface);
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
@@ -144,7 +144,7 @@
 }
 
 .stats .streak {
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 
 .stats span {
@@ -193,6 +193,7 @@
 
 .row:first-child {
   border-top: 0;
+  padding-top: 4px;
 }
 
 .tile {
@@ -375,14 +376,6 @@
 @media (max-width: 680px) {
   .stats {
     gap: 8px;
-  }
-
-  .stats > div {
-    padding: 14px;
-  }
-
-  .stats b {
-    font-size: 22px;
   }
 
   .head {

@@ -18,6 +18,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Covers the notch area on phones so content scrolling under it doesn't show through (mockup body::before). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 40;
+  background: var(--bg);
+}
+
 button,
 input,
 select,
@@ -33,7 +43,11 @@ button {
   padding: 0;
 }
 
-:focus-visible {
+/*
+ * Zero specificity, so a component's own radius or deliberate `outline: 0` (an input inside a box that draws the
+ * ring) always wins, whatever order the lazily loaded stylesheets arrive in.
+ */
+:where(:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 8px;

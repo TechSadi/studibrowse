@@ -38,7 +38,7 @@ export function PhoneHeader({ variant = 'phone' }: { variant?: 'phone' | 'room' 
         </nav>
       ) : null}
       <div className={styles.right}>
-        <ConnectionStatus />
+        <ConnectionStatus announce={!room} />
         <ThemeToggle />
         <NotificationBellButton className={iconButton.iconBtn} />
         <Link to="/settings" className={styles.me} aria-label="Your account">

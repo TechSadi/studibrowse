@@ -8,7 +8,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { FormError } from '../../components/ui/Field';
 import { FollowButton } from '../../components/ui/FollowButton';
 import { Icon } from '../../components/ui/Icon';
-import { LivePill } from '../../components/ui/Pill';
+import { LiveTag } from '../../components/ui/Pill';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
 import { useNow } from '../../hooks/useNow';
@@ -50,7 +50,7 @@ function HostingNow({ room }: { room: RoomSummary }) {
   const now = useNow(CLOCK_MS);
   return (
     <section className={styles.hosting} aria-label="Hosting now">
-      <LivePill>Live</LivePill>
+      <LiveTag />
       <div className={styles.grow}>
         <b>Hosting {room.name}</b>
         <small>{hostingDetail(room, now)}</small>

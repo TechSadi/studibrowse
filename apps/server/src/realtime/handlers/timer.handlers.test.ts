@@ -150,6 +150,25 @@ describe('timer commands', () => {
     expect((await storedRoom(roomId)).timer).toMatchObject({ phase: 'idle', endsAt: null });
   });
 
+  it.each(['timer:pause', 'timer:skip', 'timer:reset'] as const)(
+    'refuses %s from anyone but the host, even while the timer runs',
+    async (event) => {
+      const { host, guests, roomId } = await roomWith(1);
+      expect(await emitAck(host.client, 'timer:start', { roomId })).toEqual({ ok: true, data: {} });
+      const running = (await storedRoom(roomId)).timer;
+
+      expect(await emitAck(guests[0]!.client, event, { roomId })).toMatchObject({
+        ok: false,
+        error: { code: 'NOT_HOST' },
+      });
+      expect((await storedRoom(roomId)).timer).toMatchObject({
+        phase: running.phase,
+        round: running.round,
+        endsAt: running.endsAt,
+      });
+    },
+  );
+
   it('refuses someone who has not joined the room', async () => {
     const { roomId } = await roomWith(0);
     const [outsider] = await server.connectUsers(1);

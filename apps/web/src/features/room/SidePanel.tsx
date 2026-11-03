@@ -1,6 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from '../../components/ui/Icon';
 import iconButton from '../../components/ui/IconButton.module.css';
+import { keepTabInside } from '../../lib/focusTrap';
 import styles from './SidePanel.module.css';
 
 export const PANEL_TABS = ['chat', 'goals', 'people', 'files'] as const;
@@ -36,6 +37,7 @@ interface SidePanelProps {
 /** The focus room's one side panel: Chat, Goals, People and Files (mockup `.side`). */
 export function SidePanel({ tab, onTabChange, counts, drawer, open, onClose, panes }: SidePanelProps) {
   const tabRefs = useRef(new Map<PanelTab, HTMLButtonElement>());
+  const panelRef = useRef<HTMLElement>(null);
 
   // The latest tab and close handler, for the effect below, which runs only when the drawer opens or closes.
   const latest = useRef({ tab, onClose });
@@ -43,13 +45,15 @@ export function SidePanel({ tab, onTabChange, counts, drawer, open, onClose, pan
     latest.current = { tab, onClose };
   });
 
-  // Opening the drawer moves focus into it; closing it gives focus back to whatever opened it.
+  // Opening the drawer moves focus into it and keeps Tab inside it, since it covers the room; closing it gives
+  // focus back to whatever opened it.
   useEffect(() => {
     if (!drawer || !open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     tabRefs.current.get(latest.current.tab)?.focus();
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') latest.current.onClose();
+      else if (panelRef.current) keepTabInside(event, panelRef.current);
     };
     document.addEventListener('keydown', onKeyDown);
     return () => {
@@ -77,7 +81,13 @@ export function SidePanel({ tab, onTabChange, counts, drawer, open, onClose, pan
     .join(' ');
 
   return (
-    <aside className={className} aria-label="Room panel" aria-hidden={drawer && !open ? true : undefined}>
+    <aside
+      ref={panelRef}
+      className={className}
+      aria-label="Room panel"
+      aria-hidden={drawer && !open ? true : undefined}
+      {...(drawer && open ? { role: 'dialog', 'aria-modal': true } : {})}
+    >
       <div className={styles.tabs} role="tablist" aria-label="Room panel">
         {PANEL_TABS.map((name, index) => {
           const selected = name === tab;

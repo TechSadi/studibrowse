@@ -72,7 +72,7 @@
 
 .lbl small {
   font-weight: 500;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .setAvatar {

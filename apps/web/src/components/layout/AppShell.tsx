@@ -3,6 +3,7 @@ import { Outlet, useMatches } from 'react-router';
 import styles from './AppShell.module.css';
 import { PhoneHeader } from './PhoneHeader';
 import { Sidebar } from './Sidebar';
+import { SkipLink } from './SkipLink';
 import { TabBar } from './TabBar';
 import { TopBar } from './TopBar';
 
@@ -30,9 +31,7 @@ export function AppShell() {
 
   return (
     <div className={styles.shell}>
-      <a className={styles.skip} href="#main">
-        Skip to content
-      </a>
+      <SkipLink />
       <Sidebar />
       <PhoneHeader />
       <main id="main" tabIndex={-1} className={styles.main}>

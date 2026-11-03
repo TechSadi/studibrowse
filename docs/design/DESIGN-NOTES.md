@@ -25,6 +25,11 @@ How to read `studibrowse-mockup.html`. Open it in a browser; the "All screens" p
 
 ## Layout rules
 
+- The phone layout (tab bar and slim header) starts below 768px, not the mockup's 680px, so 681-767px shows the phone layout instead of the 80px icon rail. The mockup's other phone rules apply from 767px down.
+- Copy that differs on purpose: the invite errors say "invite link or code" without "a 6-character code", because invite codes are 10 characters; Home's subtitle doesn't say how many people are studying (there's no live count in v1); the room bar says "N sessions · Xh focused" (the room's total, not "today"); the danger section says deleting "removes your profile, follows and notifications", which is what it removes.
+- Chat system lines are worked out on each device (see ARCHITECTURE.md › Focus room), so there's no "Room opened by …" line.
+- Room cards show "N studying now" instead of the mockup's avatar stack: the room list doesn't carry who is inside.
+
 - Signed-in pages: left sidebar with Home, Your progress, Notifications, Settings, People you follow (name + green live dot only), streak card, profile. No Create button in the sidebar. On phones the sidebar becomes a bottom tab bar: Home, Create, Progress, Settings.
 - One main action per screen; at most 3 room cards per row.
 - Room cards: subject tile, green pulsing Live badge, people count (e.g. 14/20).
@@ -42,6 +47,12 @@ How to read `studibrowse-mockup.html`. Open it in a browser; the "All screens" p
 | Live / good | #55c993 | #1a7f52 | Live badges, pulsing dots |
 | Brass | #e0a95a | #a86c1c | Streaks, host badge |
 | Break | #7cb7ff | #2f6fd0 | Break phase |
+
+Additions to the mockup's tokens (`tokens.css`):
+
+- `--violet-ink`, `--good-ink`, `--amber-ink`: text in the status colours. In light mode the mockup's violet, green and amber text is 3.7 to 4.3:1 on its own tints (below WCAG AA), so these are the same hues a little darker (#2b65bd, #19794e, #925e18). In dark mode they equal the base colours.
+- `--faint` stays for icons, disabled controls and separators only. Text the mockup sets in `--faint` (chat times, field hints, placeholders, chart labels, group headings, the auth "or", the welcome footer) uses `--muted`, which passes AA in both themes.
+- Fixed rgba values the mockup hardcodes are tokens too (`--accent-line`, `--hosting-line`, `--hosting-wash`, `--danger-line*`, `--danger-hover`, `--btn-light-hover`), with the mockup's values.
 
 Fonts: Bricolage Grotesque (display, headings, big numbers), Hanken Grotesk (body), JetBrains Mono (timer, durations, counts). The mockup's `:root` and `[data-theme="light"]` CSS blocks hold the full set of variables (radii, shadows, spacing); copy them into `apps/web/src/styles/tokens.css`.
 

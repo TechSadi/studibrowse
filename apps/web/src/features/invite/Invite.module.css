@@ -19,26 +19,6 @@
   flex-wrap: wrap;
 }
 
-.liveTag {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--good);
-  background: var(--good-soft);
-  border: 1px solid var(--good-line);
-  padding: 4px 10px 4px 9px;
-  border-radius: 99px;
-}
-
-.liveDot {
-  width: 7px;
-  height: 7px;
-}
-
 .tag {
   font-size: 12.5px;
   font-weight: 600;
@@ -260,13 +240,14 @@
   }
 }
 
-@media (max-width: 420px) {
+/* Phone width (mockup .inv-stats). */
+@media (max-width: 767px) {
   .stats {
     gap: 8px;
   }
 
   .stats div {
-    padding: 12px 10px;
+    padding: 10px;
   }
 
   .stats dd {

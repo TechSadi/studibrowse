@@ -66,7 +66,7 @@
 }
 
 .joinLink input::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .joinLink button {
@@ -147,6 +147,22 @@
   line-height: 1.1;
   margin: 0 0 12px;
   max-width: 15ch;
+}
+
+/* "Your people are studying" (mockup .pill.hot): the live pill in the accent colour. */
+.heroPill {
+  margin-bottom: 20px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+}
+
+.heroPill > :first-child {
+  background: var(--accent);
+}
+
+.heroPill > :first-child::after {
+  border-color: var(--accent);
 }
 
 .heroCopy p {
@@ -401,7 +417,7 @@
   top: -20px;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--faint);
+  color: var(--muted);
   background: var(--surface);
   padding-right: 6px;
 }
@@ -426,7 +442,7 @@
 .delta {
   font-size: 12.5px;
   font-weight: 700;
-  color: var(--good);
+  color: var(--good-ink);
   background: var(--good-soft);
   padding: 2px 8px;
   border-radius: 99px;
@@ -441,7 +457,7 @@
   height: 20px;
   margin-top: 8px;
   font-size: 12.5px;
-  color: var(--faint);
+  color: var(--muted);
   font-weight: 600;
 }
 
@@ -595,7 +611,7 @@
 }
 
 .search input::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .rooms {
@@ -632,7 +648,7 @@
 
 .panelHead {
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .panelHead h2 {
@@ -765,9 +781,5 @@
   .search {
     margin-left: 0;
     width: 100%;
-  }
-
-  .panel {
-    padding: 20px;
   }
 }

@@ -64,8 +64,9 @@ export function RoomBar({
           size="sm"
           className={styles.sound}
           aria-pressed={!soundOn}
+          // A toggle keeps one name; aria-pressed says whether it's on. The tooltip matches the name.
           aria-label="Mute timer sounds"
-          title={soundOn ? 'Mute timer sounds' : 'Turn timer sounds on'}
+          title="Mute timer sounds"
           onClick={onToggleSound}
         >
           <Icon name={soundOn ? 'volume' : 'volumeOff'} />

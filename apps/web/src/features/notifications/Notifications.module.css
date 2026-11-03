@@ -38,12 +38,12 @@
 
 .violet {
   background: var(--violet-soft);
-  color: var(--violet);
+  color: var(--violet-ink);
 }
 
 .good {
   background: var(--good-soft);
-  color: var(--good);
+  color: var(--good-ink);
 }
 
 .body {
@@ -225,7 +225,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
   margin: 22px 0 8px;
 }
 
@@ -312,9 +312,5 @@
 
   .list .act {
     display: none;
-  }
-
-  .head {
-    margin-top: 28px;
   }
 }

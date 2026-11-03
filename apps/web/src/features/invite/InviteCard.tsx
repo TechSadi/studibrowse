@@ -3,7 +3,7 @@ import { SoloCard } from '../../components/layout/SoloScreen';
 import { Avatar, AvatarStack } from '../../components/ui/Avatar';
 import { ButtonLink } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
-import { LiveDot } from '../../components/ui/Pill';
+import { LiveTag } from '../../components/ui/Pill';
 import { useNow } from '../../hooks/useNow';
 import { avatarTone, initialsOf } from '../../lib/avatar';
 import styles from './Invite.module.css';
@@ -32,10 +32,7 @@ export function InviteCard({ room, code }: InviteCardProps) {
           </span>
         </div>
         <div className={styles.badges}>
-          <span className={styles.liveTag}>
-            <LiveDot className={styles.liveDot} />
-            Live
-          </span>
+          <LiveTag />
           {room.subject ? <span className={styles.tag}>{room.subject}</span> : null}
           <span
             className={full ? `${styles.cap} ${styles.full}` : styles.cap}

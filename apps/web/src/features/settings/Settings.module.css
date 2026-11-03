@@ -191,16 +191,16 @@
 /* Log out and delete (.danger-sec, .btn-danger) */
 
 .danger {
-  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  border-color: var(--danger-line);
 }
 
 .danger .dangerBtn {
-  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  border-color: var(--danger-line-strong);
   background: transparent;
 }
 
 .danger .dangerBtn:hover:not(:disabled) {
-  background: var(--danger-soft);
+  background: var(--danger-hover);
 }
 
 .dialogActions {
@@ -228,10 +228,6 @@
 }
 
 @media (max-width: 767px) {
-  .head {
-    margin: 22px 0 20px;
-  }
-
   .sec {
     padding: 20px;
   }

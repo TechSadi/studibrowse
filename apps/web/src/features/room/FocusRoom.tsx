@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PresenceMember, PublicUser } from '@studibrowse/shared';
 import { PhoneHeader } from '../../components/layout/PhoneHeader';
+import { SkipLink } from '../../components/layout/SkipLink';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useToast } from '../../components/ui/Toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -19,13 +20,10 @@ import { ReconnectBanner } from './ReconnectBanner';
 import { RoomBar } from './RoomBar';
 import type { JoinedRoom } from './roomSession';
 import { PanelDock, SidePanel, type PanelTab } from './SidePanel';
-import { HostOnlyNote, TimerControls } from './TimerControls';
-import { TimerRing } from './TimerRing';
-import { TimerSettingsSummary } from './TimerSettingsSummary';
-import { timerTitle, timerView } from './timerView';
+import { TimerStage } from './TimerStage';
 import { useHostActions } from './useHostActions';
 import { usePhaseSettings } from './usePhaseSettings';
-import { useRoomTimer } from './useRoomTimer';
+import { useRoomClock } from './useRoomTimer';
 import { useTimerSounds } from './useTimerSounds';
 
 /** Where the side panel stops being a column and becomes a drawer (the mockup's breakpoint). */
@@ -54,21 +52,11 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
   const host = members.find((member) => member.isHost);
   const hostName = host && host.userId !== user.id ? firstName(host.name) : null;
 
-  const { timer, remainingMs } = useRoomTimer(room.id, snapshot);
+  // The server's timer only: the per-second countdown lives in TimerStage, so this page doesn't re-render with it.
+  const clock = useRoomClock(room.id, snapshot);
+  const { timer } = clock;
   const phaseSettings = usePhaseSettings(timer, room.timerSettings);
-  const view = timerView(timer, room.timerSettings, remainingMs, phaseSettings);
   const { soundOn, toggleSound } = useTimerSounds(timer.phase);
-
-  const title = timerTitle(view, room.name);
-  useEffect(() => {
-    document.title = title;
-  }, [title]);
-  useEffect(
-    () => () => {
-      document.title = 'StudiBrowse';
-    },
-    [],
-  );
 
   // ---- Side panel ----
   const drawer = useMediaQuery(DRAWER_QUERY);
@@ -120,8 +108,9 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
 
   return (
     <>
+      <SkipLink />
       <PhoneHeader variant="room" />
-      <main className={styles.view}>
+      <main id="main" tabIndex={-1} className={styles.view}>
         <div className={styles.stage}>
           <div className={styles.inner}>
             <ReconnectBanner rejoining={rejoining} />
@@ -136,15 +125,15 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
               onLeave={onLeave}
             />
 
-            <section className={styles.timerZone} aria-label="Shared timer">
-              <TimerRing view={view} remainingMs={remainingMs} />
-              {isHost ? (
-                <TimerControls roomId={room.id} phase={timer.phase} view={view} />
-              ) : (
-                <HostOnlyNote hostName={hostName} />
-              )}
-              <TimerSettingsSummary settings={room.timerSettings} />
-            </section>
+            <TimerStage
+              roomId={room.id}
+              roomName={room.name}
+              clock={clock}
+              settings={room.timerSettings}
+              phaseSettings={phaseSettings}
+              isHost={isHost}
+              hostName={hostName}
+            />
 
             {me ? <MyStatus roomId={room.id} me={me} /> : null}
             <PeopleList members={members} myUserId={user.id} />
@@ -168,7 +157,8 @@ export function FocusRoom({ joined, rejoining, user, inviteCode, onLeave }: Focu
                 initialMessages={messages}
                 myUserId={user.id}
                 members={members}
-                focusRound={timer.phase === 'focus'}
+                phase={timer.phase}
+                round={timer.round}
               />
             ),
             goals: <GoalsPanel roomGoals={roomGoals} members={members} myUserId={user.id} isHost={isHost} />,

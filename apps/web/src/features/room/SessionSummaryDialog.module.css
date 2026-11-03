@@ -97,10 +97,6 @@
 }
 
 @media (max-width: 767px) {
-  .sum {
-    padding: 28px 20px 22px;
-  }
-
   .stats {
     gap: 8px;
   }

@@ -24,7 +24,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
   padding: 0 10px 8px;
 }
 
@@ -52,7 +52,6 @@
 
 .navItem .count {
   margin-left: auto;
-  font-family: var(--mono);
   font-size: 12px;
   font-weight: 700;
   padding: 1px 8px;
@@ -180,7 +179,7 @@
   .navItem {
     position: relative;
     justify-content: center;
-    width: 48px;
+    width: 100%;
     padding: 0;
   }
 
@@ -198,7 +197,7 @@
 
   .theme {
     justify-content: center;
-    width: 48px;
+    width: 100%;
   }
 
   .me {

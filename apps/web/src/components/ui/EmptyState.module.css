@@ -23,9 +23,3 @@
 .action {
   margin-top: 10px;
 }
-
-@media (max-width: 767px) {
-  .empty {
-    padding: 32px 20px;
-  }
-}

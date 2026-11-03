@@ -13,6 +13,7 @@ import { Link } from 'react-router';
 import { Icon } from '../../components/ui/Icon';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useNow } from '../../hooks/useNow';
+import { focusableIn, keepTabInside } from '../../lib/focusTrap';
 import { EnableBrowserNotificationsLine } from './EnableBrowserNotifications';
 import { NotificationItem } from './NotificationItem';
 import styles from './Notifications.module.css';
@@ -75,7 +76,14 @@ function Panel({ id, style, onClose }: { id: string; style: CSSProperties; onClo
   }
 
   return (
-    <div id={id} className={styles.panel} style={style} role="dialog" aria-label="Notifications">
+    <div
+      id={id}
+      className={styles.panel}
+      style={style}
+      role="dialog"
+      aria-label="Notifications"
+      tabIndex={-1}
+    >
       <div className={styles.panelHead}>
         <h3>Notifications</h3>
         <button
@@ -123,8 +131,16 @@ export function NotificationBell({ className, children, label }: NotificationBel
 
   useEffect(() => {
     if (!open) return;
+    // The panel is portalled to the end of the page, so Tab from the trigger would never reach it: move focus in
+    // and keep it there until the panel closes. Escape gives it back to the trigger.
+    const panel = document.getElementById(panelId);
+    if (panel) (focusableIn(panel)[0] ?? panel).focus();
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') close(true);
+      else {
+        const current = document.getElementById(panelId);
+        if (current) keepTabInside(event, current);
+      }
     }
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;

@@ -1,4 +1,8 @@
 /* .room-view, .stage and .timer-zone in the mockup: a full-height stage with one docked side panel. */
+.view:focus {
+  outline: none;
+}
+
 .view {
   height: calc(100vh - 64px - env(safe-area-inset-top, 0px));
   height: calc(100dvh - 64px - env(safe-area-inset-top, 0px));

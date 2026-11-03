@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // The socket lives exactly as long as the session: login opens it, logout or an ended session closes it.
   useEffect(() => {
     if (state.status !== 'signedIn') return;
-    connectSocket();
+    void connectSocket();
     return disconnectSocket;
   }, [state.status]);
 

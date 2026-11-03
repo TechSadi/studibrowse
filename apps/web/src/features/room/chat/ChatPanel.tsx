@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { CHAT_TEXT_MAX, type ChatMessage, type PresenceMember } from '@studibrowse/shared';
+import { CHAT_TEXT_MAX, type ChatMessage, type PresenceMember, type TimerPhase } from '@studibrowse/shared';
 import { Avatar } from '../../../components/ui/Avatar';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Icon } from '../../../components/ui/Icon';
 import { avatarTone, initialsOf } from '../../../lib/avatar';
 import styles from './ChatPanel.module.css';
 import { MessageText } from './MessageText';
+import { useSystemLines, type SystemLine } from './systemLines';
 import { typingText } from './typingText';
 import { useRoomChat } from './useRoomChat';
 
@@ -16,8 +17,26 @@ interface ChatPanelProps {
   myUserId: string;
   /** Who is in the room, for names and avatars. */
   members: PresenceMember[];
-  /** Shows the "keep messages short" note during a focus round. */
-  focusRound: boolean;
+  /** The timer's phase and round: system lines for its changes, and the "keep it short" note during focus. */
+  phase: TimerPhase;
+  round: number;
+}
+
+type ChatEntry = { kind: 'message'; message: ChatMessage } | { kind: 'system'; line: SystemLine };
+
+/** Messages and system lines in time order. Equal times keep messages first, as they were already shown. */
+function mergeEntries(messages: ChatMessage[], lines: SystemLine[]): ChatEntry[] {
+  const entries: ChatEntry[] = [];
+  let i = 0;
+  for (const line of lines) {
+    while (i < messages.length && messages[i]!.createdAt <= line.at) {
+      entries.push({ kind: 'message', message: messages[i]! });
+      i++;
+    }
+    entries.push({ kind: 'system', line });
+  }
+  for (; i < messages.length; i++) entries.push({ kind: 'message', message: messages[i]! });
+  return entries;
 }
 
 /** How close to the bottom counts as "reading the latest", so new messages scroll into view. */
@@ -30,8 +49,11 @@ function clockTime(iso: string): string {
 }
 
 /** The Chat pane of the focus room's side panel. */
-export function ChatPanel({ roomId, initialMessages, myUserId, members, focusRound }: ChatPanelProps) {
+export function ChatPanel({ roomId, initialMessages, myUserId, members, phase, round }: ChatPanelProps) {
   const { messages, typingUserIds, send, notifyTyping } = useRoomChat(roomId, initialMessages, myUserId);
+  const systemLines = useSystemLines(phase, round, members, myUserId);
+  const entries = mergeEntries(messages, systemLines);
+  const focusRound = phase === 'focus';
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,11 +64,12 @@ export function ChatPanel({ roomId, initialMessages, myUserId, members, focusRou
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const lastMessage = messages.at(-1);
+  const lastLine = systemLines.at(-1);
   useLayoutEffect(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
     if (atBottom.current || lastMessage?.userId === myUserId) scroller.scrollTop = scroller.scrollHeight;
-  }, [lastMessage, myUserId]);
+  }, [lastMessage, lastLine, myUserId]);
 
   function onScroll() {
     const scroller = scrollRef.current;
@@ -83,45 +106,51 @@ export function ChatPanel({ roomId, initialMessages, myUserId, members, focusRou
         role="log"
         aria-label="Room chat"
       >
-        {messages.length === 0 ? (
-          <EmptyState title="No messages yet">Say hello. Chat is best kept for the breaks.</EmptyState>
-        ) : (
-          <ol className={styles.msgs}>
-            {messages.map((message) => {
-              const mine = message.userId === myUserId;
-              const author = message.userId === null ? undefined : membersById.get(message.userId);
-              // A null author deleted their account; anyone else not in the room has left.
-              const name = mine
-                ? 'You'
-                : (author?.name ?? (message.userId === null ? 'Deleted account' : 'Someone'));
+        <ol className={styles.msgs}>
+          {entries.map((entry) => {
+            if (entry.kind === 'system') {
               return (
-                <li key={message.id} className={mine ? `${styles.msg} ${styles.mine}` : styles.msg}>
-                  {mine ? null : (
-                    <Avatar
-                      initials={author ? initialsOf(author.name) : '?'}
-                      tone={author ? avatarTone(author.avatarColor) : 1}
-                      size="sm"
-                    />
-                  )}
-                  <div className={styles.body}>
-                    <div className={styles.meta}>
-                      {name}
-                      <time dateTime={message.createdAt}>{clockTime(message.createdAt)}</time>
-                    </div>
-                    <div className={styles.bubble}>
-                      <MessageText text={message.text} />
-                    </div>
-                  </div>
+                <li key={entry.line.id} className={styles.sys}>
+                  {entry.line.text}
                 </li>
               );
-            })}
-          </ol>
-        )}
+            }
+            const { message } = entry;
+            const mine = message.userId === myUserId;
+            const author = message.userId === null ? undefined : membersById.get(message.userId);
+            // A null author deleted their account; anyone else not in the room has left.
+            const name = mine
+              ? 'You'
+              : (author?.name ?? (message.userId === null ? 'Deleted account' : 'Someone'));
+            return (
+              <li key={message.id} className={mine ? `${styles.msg} ${styles.mine}` : styles.msg}>
+                {mine ? null : (
+                  <Avatar
+                    initials={author ? initialsOf(author.name) : '?'}
+                    tone={author ? avatarTone(author.avatarColor) : 1}
+                    size="sm"
+                  />
+                )}
+                <div className={styles.body}>
+                  <div className={styles.meta}>
+                    {name}
+                    <time dateTime={message.createdAt}>{clockTime(message.createdAt)}</time>
+                  </div>
+                  <div className={styles.bubble}>
+                    <MessageText text={message.text} />
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+        {messages.length === 0 ? (
+          <EmptyState title="No messages yet">Say hello. Chat is best kept for the breaks.</EmptyState>
+        ) : null}
       </div>
 
-      <div className={styles.typing} aria-live="polite">
-        {typingText(typingNames)}
-      </div>
+      {/* Not a live region: announcing every "is typing" would drown out the messages the log reads out. */}
+      <div className={styles.typing}>{typingText(typingNames)}</div>
 
       <div className={styles.foot}>
         <form className={styles.compose} onSubmit={(event) => void onSubmit(event)}>
