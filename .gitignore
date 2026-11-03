@@ -23,3 +23,7 @@ test-results/
 .DS_Store
 Thumbs.db
 node_modules
+
+# Personal guide docs (kept locally, not in the repo)
+docs/
+CLAUDE.md
